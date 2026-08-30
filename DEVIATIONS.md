@@ -201,13 +201,66 @@ I12. Lo stesso exponent resta condiviso (quella parte dello step 7 vale
 ancora); cambia solo la direzione di arrotondamento. Magnitudine massima
 dell'effetto: <1 unità e8 a exponent −9.
 
-**Nota correlata, non ancora decisa**: la formula dello step 8
-(`conf_e8 * 10_000 / price_e8`, in `math::confidence_ratio_bps`) tronca
-anch'essa, e la troncatura lì va nella stessa direzione anti-conservativa
-(un feed marginalmente troppo largo può passare il gate
-`CONF_MAX_RATIO_BPS` per arrotondamento). È la formula letterale della
-spec ed è rimasta tale; la magnitudine è sub-bps. Segnalata, decisione
-lasciata all'utente.
+**Nota correlata, decisa (2026-08-30, utente)**: la formula dello step 8
+(`conf_e8 * 10_000 / price_e8`, in `math::confidence_ratio_bps`)
+troncava anch'essa, nella stessa direzione anti-conservativa (un feed
+marginalmente troppo largo passava il gate `CONF_MAX_RATIO_BPS` per
+arrotondamento). Ora **anche il ratio usa il ceiling**, su indicazione
+dell'utente: un arrotondamento che agisce su una soglia di rifiuto
+arrotonda verso il rifiuto. Il principio generale è formalizzato in
+`SECURITY.md` ("Principio di arrotondamento") e vale per ogni
+arrotondamento futuro.
+
+## Fix del security review (2026-08-30), entrambi approvati dall'utente
+
+Il security review interno (pipeline a due passaggi con validazione
+indipendente dei finding) ha trovato due difetti reali, entrambi
+confermati e corretti. Ciò che hanno in comune: entrambi nascono da una
+transizione di stato che la spec presentava come automatica e che invece
+richiede una transazione di qualcuno — `lock_event` per il primo,
+la chiusura dei `BetEntry` per il secondo. Su Solana niente accade da
+solo: ogni volta che la spec dice "quando accade X" bisogna chiedersi chi
+manda la transazione e cosa ci guadagna.
+
+1. **`cancel_bet` dopo `betting_close_time` era una free option** (High).
+   Il solo controllo `status == Open` lasciava annullabile una puntata
+   nella finestra fra chiusura e primo `lock_event` — crank permissionless
+   che nessuno è obbligato a chiamare — cioè con informazione sul prezzo
+   post-chiusura. La giustificazione originale della spec ("sicuro perché
+   prima del lock l'esito è ignoto a tutti") confondeva "prima del lock"
+   con "prima della chiusura"; l'utente, autore di quella frase, ha
+   confermato l'errore di ragionamento e riscritto la regola. Fix: `now <
+   betting_close_time` in `cancel_bet`, speculare a `place_bet`,
+   riusando l'error code esistente `BettingClosed` (semanticamente esatto,
+   nessun codice nuovo). Testo corretto della regola in `README.md`.
+   Test: E27.
+
+2. **I `BetEntry` perdenti non avevano alcun percorso di chiusura**
+   (Medium: si attiva sul 100% dei mercati risolti, perdita limitata a
+   rent e dust ma permanente, irreversibile dopo il burn dell'authority).
+   `claim` rifiutava i perdenti e `claim_refund` richiede REFUNDABLE,
+   quindi su RESOLVED `bets_closed == bettor_count` era insoddisfacibile
+   e `close_event` falliva per sempre. Fix (variante A, scelta
+   dall'utente): `claim` ora è "il partecipante chiude la propria
+   posizione, incassando se ha vinto" — quota zero per i perdenti, e il
+   ramo perdente **non trasferisce affatto** (non un trasferimento di
+   zero lamport, che qualcuno un giorno leggerebbe come un pagamento);
+   il `BetEntry` si chiude in ogni caso via `close = bettor` e
+   `bets_closed` avanza. `NotWinningOutcome` rimosso dagli error code.
+   Test: E28.
+
+## Asimmetria accettata consapevolmente: uscita gratuita del lato unico
+
+Variante segnalata dal review e NON chiusa: un bettor che sia l'unico sul
+proprio lato può annullare **anche dentro la finestra legittima** (prima
+di `betting_close_time`), collassando il book a monolaterale → REFUNDABLE
+al lock, e negando ai bettor dell'altro lato la vincita. È un'uscita a
+costo zero da una posizione percepita come perdente, ogni volta che sei
+l'unico su un lato. Non è la stessa vulnerabilità del punto 1 (non c'è
+informazione sul prezzo di risoluzione), ed è accettata deliberatamente:
+in un mercato a micro-eventi con pochi partecipanti il diritto di uscire
+prima della chiusura vale più del rischio. Decisione dell'utente,
+2026-08-30.
 
 ## Arrotondamento della protocol fee
 

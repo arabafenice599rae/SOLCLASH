@@ -51,7 +51,7 @@ può mai fallire per mancanza di fondi. Il resto lo raccoglie `close_event`.
 ## Macchina a stati
 
 ```
-OPEN ──cancel_bet sempre consentito
+OPEN ──cancel_bet consentito solo prima di betting_close_time
  │ betting_close_time → lock_event() permissionless
  ▼
 LOCKED
@@ -67,6 +67,19 @@ claim × N / claim_refund × N → close_event
 
 LOCKED oltre resolution_time + RESOLUTION_TIMEOUT_SECS senza candidato → REFUNDABLE
 ```
+
+Due precisazioni rispetto alla spec originale (motivate dal security
+review del 2026-08-30, dettagli in `DEVIATIONS.md`):
+
+- **`cancel_bet`** è consentito in OPEN **e prima di `betting_close_time`**.
+  È sicuro perché prima della chiusura nessuno ha informazione sul prezzo
+  di risoluzione. Il controllo sul solo `status == Open` non basta:
+  `lock_event` è un crank permissionless e la finestra fra chiusura e lock
+  può estendersi indefinitamente.
+- **`claim`** non è "il vincitore incassa": è "il partecipante chiude la
+  propria posizione, incassando se ha vinto". Su un evento RESOLVED anche
+  i perdenti chiamano `claim` — la loro quota è zero, il `BetEntry` si
+  chiude comunque restituendo il rent, e `close_event` resta raggiungibile.
 
 Dettagli completi (istruzioni, invarianti, formula di normalizzazione
 del prezzo, confidence band) in `SECURITY.md`.

@@ -41,15 +41,30 @@ citati con `cargo doc`-style link.
   `get_price_no_older_than`, che questo programma non chiama — vedi
   `docs/pyth-reference.md` §3 per perché quella funzione SDK non basta).
 - **I2 — Nessun payout a un `BetEntry` non sull'esito vincente.**
-  `instructions::settlement::claim` confronta `bet_entry.outcome` con
-  `event.candidate_outcome` prima di calcolare qualunque importo.
+  `instructions::settlement::claim` calcola la quota solo per il ramo
+  vincente; per un `BetEntry` perdente la quota è zero e **nessun
+  trasferimento avviene** (non un trasferimento di zero lamport: il ramo
+  perdente non trasferisce affatto). Il perdente chiama comunque `claim`
+  per chiudere la posizione e recuperare il rent del proprio account —
+  `claim` significa "chiudi la posizione, incassando se hai vinto", non
+  "il vincitore incassa". Senza questo, i `BetEntry` perdenti non
+  avrebbero alcun percorso di chiusura e `close_event` sarebbe
+  irraggiungibile su ogni evento RESOLVED (finding del security review,
+  2026-08-30).
 - **I3 — La protocol fee può andare solo a `FEE_WALLET`.** Espresso come
   vincolo Anchor `address = FEE_WALLET_DEV` sull'account `fee_wallet` in
   `FinalizeResolution`, non come controllo manuale — un vincolo di account
   fallisce prima ancora che l'handler inizi a eseguire.
 - **I4 — Nessuna scommessa dopo `betting_close_time`.**
   `instructions::market::place_bet` verifica `now < event.betting_close_time`
-  prima di accettare qualunque trasferimento.
+  prima di accettare qualunque trasferimento. Lo stesso vincolo temporale
+  vale per `cancel_bet`: annullare dopo la chiusura, nella finestra in cui
+  `lock_event` (crank permissionless, che nessuno è obbligato a chiamare)
+  non è ancora stato eseguito, sarebbe una free option esercitata con
+  informazione sul prezzo post-chiusura (finding del security review,
+  2026-08-30 — la giustificazione originale della spec, "sicuro perché
+  prima del lock l'esito è ignoto a tutti", confondeva "prima del lock"
+  con "prima della chiusura").
 - **I5 — `resolution_time - betting_close_time >= MIN_RESOLUTION_GAP_SECS`,
   sempre.** Verificato una sola volta, alla creazione
   (`instructions::market::create_event`) — i due timestamp sono immutabili
@@ -100,6 +115,28 @@ citati con `cargo doc`-style link.
   richiede e `finalized_at` è immutabile), più un controllo diretto
   ridondante in `claim`/`claim_refund` come difesa in profondità.
 
+## Principio di arrotondamento
+
+> Ogni arrotondamento che agisce su una **soglia di rifiuto** arrotonda
+> nella direzione che rende il rifiuto più probabile. Ogni arrotondamento
+> che agisce su un **pagamento** arrotonda verso il basso, perché è ciò
+> che rende `Σ pagamenti ≤ payout_pool` vera per costruzione.
+
+Le due regole sembrano opposte e non lo sono: entrambe scelgono la
+direzione che non può causare una perdita. Applicazioni correnti:
+
+- `math::normalize_conf_to_e8` — ceiling: la banda di confidenza può solo
+  allargarsi per arrotondamento, mai restringersi (I12);
+- `math::confidence_ratio_bps` — ceiling: un feed marginalmente troppo
+  largo non passa mai il gate `CONF_MAX_RATIO_BPS` per arrotondamento;
+- `math::pro_rata_share` e la protocol fee — floor: `Σ pagamenti ≤
+  payout_pool` per costruzione (I11);
+- `math::normalize_price_to_e8` — troncatura, formula letterale della
+  spec (il prezzo non è né una soglia di rifiuto né un pagamento; la
+  conservatività della banda è già garantita dal ceiling su `conf`).
+
+Il principio vale per ogni arrotondamento futuro, Fase 3 inclusa.
+
 ## Registro error code rispetto alla lista della spec
 
 `errors.rs` è la fonte di verità. Divergenze deliberate dalla lista di
@@ -108,6 +145,12 @@ al deploy sia quella vera:
 
 - **Rinominato**: `OraclePriceNonPositive` (la spec usava questo nome; una
   prima stesura del codice lo chiamava `OracleInvalidPrice` — allineato).
+- **Rimosso**: `NotWinningOutcome` — su un evento RESOLVED il `claim` di
+  un perdente non è un errore ma il modo in cui chiude la posizione (quota
+  zero, rent restituito); vedi I2. Secondo codice della lista spec a
+  sparire dopo quelli resi superflui dai seed PDA: a fine Fase 1 la lista
+  va riconciliata una volta sola contro `errors.rs`, che è la fonte di
+  verità.
 - **Aggiunti (necessari, non previsti dalla spec)**:
   - `OracleExponentOutOfRange` — un exponent che renderebbe `10^n` fuori
     da `i128` viene rifiutato invece di panicare;

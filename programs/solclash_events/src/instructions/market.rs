@@ -193,11 +193,21 @@ pub struct CancelBet<'info> {
     pub bet_entry: Account<'info, BetEntry>,
 }
 
+/// Cancel is allowed while OPEN **and before `betting_close_time`** —
+/// both checks, mirroring `place_bet`. It is safe because before the
+/// close nobody has any information about the resolution price. Checking
+/// `status == Open` alone is NOT enough: `lock_event` is a permissionless
+/// crank nobody is obligated to call, so the window between the close and
+/// the first lock can stretch indefinitely — a cancel inside that window
+/// would be a free option exercised with knowledge of post-close price
+/// movement (security review finding, 2026-08-30; see DEVIATIONS.md).
 pub fn cancel_bet(ctx: Context<CancelBet>) -> Result<()> {
     let event = &mut ctx.accounts.event;
     let bet_entry = &ctx.accounts.bet_entry;
 
     require!(event.status == EventStatus::Open, SolclashError::CancelNotOpen);
+    let now = Clock::get()?.unix_timestamp;
+    require!(now < event.betting_close_time, SolclashError::BettingClosed);
 
     let stake = bet_entry.stake;
     event.pot = event.pot.checked_sub(stake).ok_or(SolclashError::MathOverflow)?;

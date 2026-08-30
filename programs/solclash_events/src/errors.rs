@@ -102,8 +102,10 @@ pub enum SolclashError {
     EventNotRefundable,
     #[msg("cannot claim or refund before finalized_at")]
     ClaimBeforeFinalized,
-    #[msg("this BetEntry did not bet on the winning outcome")]
-    NotWinningOutcome,
+    // No NotWinningOutcome: on a Resolved event, claim is how EVERY
+    // participant closes their position — a loser's share is simply zero
+    // (rent back, no payout), so "loser tries to claim" is not an error
+    // path. See instructions/settlement.rs and DEVIATIONS.md.
 
     // ---- mark_refundable ----
     #[msg("event is not eligible for the resolution timeout yet")]

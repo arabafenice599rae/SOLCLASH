@@ -162,10 +162,19 @@ pub fn resolve_confidence_band(
     }
 }
 
-/// `conf_e8 * 10_000 / price_e8 <= CONF_MAX_RATIO_BPS`, per spec step 8.
-/// `price_e8` is assumed already checked `> 0` (spec step 6) by the caller;
-/// this function still guards against a zero/negative `price_e8` defensively
-/// rather than dividing by it blindly.
+/// `conf_e8 * 10_000 / price_e8 <= CONF_MAX_RATIO_BPS`, per spec step 8 —
+/// with the division CEILED, not truncated. This ratio exists to REJECT a
+/// degraded feed: rounding it down would let through a feed that should
+/// have been rejected. Same principle as `normalize_conf_to_e8`, stated
+/// once in SECURITY.md: rounding that feeds a rejection threshold rounds
+/// toward rejection; rounding that feeds a payout rounds down. Both pick
+/// the direction that cannot cause a loss. (Sub-bps magnitude here — the
+/// point is never having two adjacent roundings going opposite ways for
+/// no reason an auditor can reconstruct.)
+///
+/// `price_e8` is assumed already checked `> 0` (spec step 6) by the
+/// caller; this function still guards against a zero/negative `price_e8`
+/// defensively rather than dividing by it blindly.
 pub fn confidence_ratio_bps(price_e8: i128, conf_e8: i128) -> Result<u64, SolclashError> {
     if price_e8 <= 0 {
         return Err(SolclashError::OraclePriceNonPositive);
@@ -173,9 +182,20 @@ pub fn confidence_ratio_bps(price_e8: i128, conf_e8: i128) -> Result<u64, Solcla
     let numerator = conf_e8
         .checked_mul(10_000)
         .ok_or(SolclashError::MathOverflow)?;
-    let ratio = numerator
+    // Ceiling toward +infinity, same shape as normalize_conf_to_e8: for
+    // the live case (conf >= 0, price > 0) quotient + 1 iff the division
+    // is inexact.
+    let quotient = numerator
         .checked_div(price_e8)
         .ok_or(SolclashError::MathOverflow)?;
+    let remainder = numerator
+        .checked_rem(price_e8)
+        .ok_or(SolclashError::MathOverflow)?;
+    let ratio = if remainder != 0 && numerator > 0 {
+        quotient.checked_add(1).ok_or(SolclashError::MathOverflow)?
+    } else {
+        quotient
+    };
     u64::try_from(ratio).map_err(|_| SolclashError::MathOverflow)
 }
 
@@ -401,16 +421,19 @@ mod tests {
 
     #[test]
     fn ratio_below_at_and_above_a_threshold() {
-        // conf/price = 5% exactly -> 500 bps
+        // exact divisions are unaffected by the ceiling
         assert_eq!(confidence_ratio_bps(10_000, 500).unwrap(), 500);
-        // just below and just above
         assert_eq!(confidence_ratio_bps(10_000, 499).unwrap(), 499);
         assert_eq!(confidence_ratio_bps(10_000, 501).unwrap(), 501);
-        // zero conf -> zero ratio
+        // zero conf -> zero ratio, exact
         assert_eq!(confidence_ratio_bps(10_000, 0).unwrap(), 0);
-        // truncation: 1/3 of price -> 3333 bps, not 3334 (spec-literal
-        // formula; direction flagged in DEVIATIONS.md)
-        assert_eq!(confidence_ratio_bps(3, 1).unwrap(), 3333);
+        // inexact division CEILS: 1/3 of price -> 3334 bps, not 3333.
+        // The ratio feeds a rejection threshold, so rounding goes toward
+        // rejection — a marginally-too-wide feed must not slip through.
+        assert_eq!(confidence_ratio_bps(3, 1).unwrap(), 3334);
+        // one lamport of conf over an enormous price still registers as
+        // 1 bps, never rounds to a free pass
+        assert_eq!(confidence_ratio_bps(1_000_000_000_000, 1).unwrap(), 1);
     }
 
     #[test]

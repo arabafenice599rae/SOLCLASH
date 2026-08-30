@@ -60,19 +60,30 @@ pub fn claim(ctx: Context<Claim>) -> Result<()> {
     let winning_outcome = event
         .candidate_outcome
         .ok_or(SolclashError::EventNotResolved)?;
-    require!(
-        bet_entry.outcome == winning_outcome,
-        SolclashError::NotWinningOutcome
-    );
 
-    let winning_stake = if winning_outcome == OUTCOME_YES {
-        event.yes_stake
+    // claim is how EVERY participant closes their position on a Resolved
+    // event, not just winners: a loser's share is zero, their BetEntry
+    // closes anyway (rent back via `close = bettor`), and `bets_closed`
+    // advances so `close_event` stays reachable. Without this, losing
+    // BetEntries had no closing path at all and `bets_closed ==
+    // bettor_count` was unsatisfiable on every Resolved event — losers'
+    // rent, the Event rent, and the floor dust were locked forever
+    // (security review finding, 2026-08-30; see DEVIATIONS.md).
+    let share = if bet_entry.outcome == winning_outcome {
+        let winning_stake = if winning_outcome == OUTCOME_YES {
+            event.yes_stake
+        } else {
+            event.no_stake
+        };
+        compute_claim(event.payout_pool, bet_entry.stake, winning_stake)?
     } else {
-        event.no_stake
+        0
     };
-    let payout = compute_claim(event.payout_pool, bet_entry.stake, winning_stake)?;
-
-    transfer_from_pda(&event.to_account_info(), &ctx.accounts.bettor.to_account_info(), payout)?;
+    // The losing branch must not transfer at all — a zero-lamport
+    // transfer is noise someone will one day read as a payment.
+    if share > 0 {
+        transfer_from_pda(&event.to_account_info(), &ctx.accounts.bettor.to_account_info(), share)?;
+    }
 
     event.bets_closed = event
         .bets_closed
