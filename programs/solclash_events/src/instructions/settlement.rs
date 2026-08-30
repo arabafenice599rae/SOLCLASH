@@ -8,7 +8,7 @@
 //! (`Resolved | Refundable => event.payout_pool`) describes the total
 //! liability at the moment of the terminal transition, not the remaining
 //! balance after some claims have already been paid — it is checked once,
-//! at that transition, in `finalize_resolution`/`lock_event`/
+//! at that transition, in `resolve_event`/`lock_event`/
 //! `mark_refundable` instead. Individual claims and refunds instead rely
 //! on the floor-division proof in `math::pro_rata_share` (I11:
 //! `Σ payouts <= payout_pool` by construction) for correctness. See
@@ -45,20 +45,12 @@ pub fn claim(ctx: Context<Claim>) -> Result<()> {
     let bet_entry = &ctx.accounts.bet_entry;
 
     require!(event.status == EventStatus::Resolved, SolclashError::EventNotResolved);
-    let now = Clock::get()?.unix_timestamp;
-    // I13, defense-in-depth: status == Resolved already implies
-    // now >= finalized_at transitively (finalize_resolution required it,
-    // and finalized_at is immutable, and the on-chain clock never moves
-    // backward), so this can never actually fire — kept anyway as a
-    // direct, self-documenting assertion of the named invariant rather
-    // than an indirect one.
-    require!(now >= event.finalized_at, SolclashError::ClaimBeforeFinalized);
 
-    // status == Resolved is only reached via finalize_resolution's `Some`
-    // branch, which always leaves candidate_outcome as Some — this can
-    // only be None here if that invariant were violated elsewhere.
+    // status == Resolved is only reached via resolve_event's `Some` branch,
+    // which always leaves resolved_outcome as Some — this can only be None
+    // here if that invariant were violated elsewhere.
     let winning_outcome = event
-        .candidate_outcome
+        .resolved_outcome
         .ok_or(SolclashError::EventNotResolved)?;
 
     // claim is how EVERY participant closes their position on a Resolved
@@ -163,13 +155,6 @@ pub fn claim_refund(ctx: Context<ClaimRefund>) -> Result<()> {
         event.status == EventStatus::Refundable,
         SolclashError::EventNotRefundable
     );
-    let now = Clock::get()?.unix_timestamp;
-    // See the identical comment in `claim`. On the two paths that reach
-    // Refundable without ever calling resolve_event (lock_event's
-    // one-sided book, mark_refundable's timeout), finalized_at is still
-    // its create_event default of 0, so this is trivially true there —
-    // harmless, but noted in DEVIATIONS.md.
-    require!(now >= event.finalized_at, SolclashError::ClaimBeforeFinalized);
 
     let refund = compute_refund(event.payout_pool, bet_entry.stake, event.pot)?;
 

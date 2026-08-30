@@ -53,7 +53,7 @@ citati con `cargo doc`-style link.
   2026-08-30).
 - **I3 — La protocol fee può andare solo a `FEE_WALLET`.** Espresso come
   vincolo Anchor `address = FEE_WALLET_DEV` sull'account `fee_wallet` in
-  `FinalizeResolution`, non come controllo manuale — un vincolo di account
+  `ResolveEvent`, non come controllo manuale — un vincolo di account
   fallisce prima ancora che l'handler inizi a eseguire.
 - **I4 — Nessuna scommessa dopo `betting_close_time`.**
   `instructions::market::place_bet` verifica `now < event.betting_close_time`
@@ -78,22 +78,31 @@ citati con `cargo doc`-style link.
   `Event::outstanding_liability()` più un `require!` dedicato
   (`EscrowMismatch`), chiamato ai punti di transizione di stato dove la
   formula è auto-consistente — **non** dentro `claim`/`claim_refund` (vedi
-  `DEVIATIONS.md` per il perché di questa scelta, e per la finestra
-  specifica in cui questo controllo non può essere ri-eseguito dentro
-  `challenge_resolution`).
-- **I8 — Monotonia di `candidate_publish_time` e immutabilità di
-  `finalized_at`.** `instructions::resolution::challenge_resolution`
-  accetta solo `publish_time` strettamente maggiore del candidato corrente,
-  e non tocca mai `event.finalized_at`.
+  `DEVIATIONS.md` per il perché di questa scelta). In `resolve_event` il
+  check è sullo stato terminale finale, dopo l'uscita di fee e reward,
+  quando il PDA trattiene esattamente `rent + payout_pool`.
+- **I8 — (ritirata, 2026-08-30).** Descriveva la monotonia di
+  `candidate_publish_time` e l'immutabilità di `finalized_at` — entrambi
+  concetti del meccanismo di sfida, rimosso. Con l'update di risoluzione
+  reso unico dalla canonicità (vedi I10) non c'è più un candidato da far
+  evolvere né una finestra di sfida da proteggere. Il numero è mantenuto
+  ritirato per non rinumerare le altre invarianti.
 - **I9 — Il settlement non richiede alcuna autorità centrale.** Tutte le
   istruzioni tranne `cancel_bet`/`claim`/`claim_refund` sono permissionless
   per costruzione: chiunque può pagare il gas per far avanzare lo stato.
-- **I10 — Il risultato è ricostruibile da chiunque interrogando Pyth
-  Benchmarks a `resolution_time`.** Diretta conseguenza della regola
-  `publish_time <= resolution_time` (l'update canonico è l'ultimo
-  pubblicato prima di `resolution_time`, non un update scelto a piacere fra
-  i ~60 pubblicati nella finestra) — vedi `docs/pyth-reference.md` §2 per la
-  semantica di `prev_publish_time` che rende questo update unico.
+- **I10 — Il risultato è ricostruibile e verificabile on-chain da
+  chiunque.** L'update di risoluzione è quello **unico** con
+  `prev_publish_time < resolution_time <= publish_time` — il primo update
+  pubblicato a-o-dopo `resolution_time` per quel feed (semantica Pyth, vedi
+  `docs/pyth-reference.md` §2). `resolve_event` **verifica** questa
+  disuguaglianza on-chain, quindi l'esito non dipende più da chi sfida chi:
+  il risolutore non ha discrezione, o l'update che invia è quello canonico
+  o viene rifiutato. Se il feed ha un buco all'istante `resolution_time`
+  (l'update canonico è più vecchio di `MAX_RESOLUTION_STALENESS_SECS`),
+  l'esito è AMBIGUO → REFUNDABLE. Questa è la variante *verificabile*
+  dell'intento originale della spec ("ultimo prima di T" diventa "primo a/
+  dopo T"): la vecchia formulazione non era garantita on-chain, era una
+  mitigazione a sfida dove ora c'è una verifica.
 - **I11 — `Σ pagamenti <= payout_pool` per costruzione.** Non è un
   controllo a runtime: è una proprietà matematica della divisione floor in
   `math::pro_rata_share` (`u128` intermedio, `floor(payout_pool * stake /
@@ -109,11 +118,14 @@ citati con `cargo doc`-style link.
   banda, mai restringerla — un caso di frontiera può degradare verso
   AMBIGUO, mai promuoversi a esito definito. Verificato anche come
   proprietà su terne pseudo-casuali nei test inline di `math.rs`.
-- **I13 — Nessun pagamento ai partecipanti prima di `finalized_at`.**
-  Garantito transitivamente dalla macchina a stati (`status == Resolved`
-  implica già `now >= finalized_at`, dato che `finalize_resolution` lo
-  richiede e `finalized_at` è immutabile), più un controllo diretto
-  ridondante in `claim`/`claim_refund` come difesa in profondità.
+- **I13 — (ritirata, 2026-08-30).** Descriveva "nessun pagamento ai
+  partecipanti prima di `finalized_at`". Con la rimozione della fase di
+  sfida `resolve_event` va direttamente a uno stato terminale: non esiste
+  più una finestra pre-finalize da proteggere, quindi `finalized_at` non
+  esiste e l'invariante è priva di oggetto. Il pagamento è gated
+  semplicemente da `status == Resolved`/`Refundable`, cioè dal fatto che
+  `resolve_event` (o `mark_refundable`/`lock_event`) sia già avvenuto.
+  Numero mantenuto ritirato per non rinumerare.
 
 ## Principio di arrotondamento
 
@@ -147,19 +159,34 @@ al deploy sia quella vera:
   prima stesura del codice lo chiamava `OracleInvalidPrice` — allineato).
 - **Rimosso**: `NotWinningOutcome` — su un evento RESOLVED il `claim` di
   un perdente non è un errore ma il modo in cui chiude la posizione (quota
-  zero, rent restituito); vedi I2. Secondo codice della lista spec a
-  sparire dopo quelli resi superflui dai seed PDA: a fine Fase 1 la lista
-  va riconciliata una volta sola contro `errors.rs`, che è la fonte di
-  verità.
+  zero, rent restituito); vedi I2.
+- **Rimossi con il meccanismo di sfida (2026-08-30)**: `EventNotResolving`,
+  `ChallengeWindowClosed`, `ChallengeNotNewer`, `FinalizeTooEarly` (lo
+  stato `Resolving`, `challenge_resolution` e `finalize_resolution` non
+  esistono più), e le due sostituite dalla regola di canonicità
+  (`OraclePublishTimeInFuture`, `OraclePublishTimeTooOld` → sostituite da
+  `OracleUpdateBeforeResolution` e `OracleNotFirstAfterResolution`).
+- **Rimosso con `finalized_at` (2026-08-30)**: `ClaimBeforeFinalized`
+  (I13 ritirata, nessuna finestra pre-finalize).
 - **Aggiunti (necessari, non previsti dalla spec)**:
   - `OracleExponentOutOfRange` — un exponent che renderebbe `10^n` fuori
     da `i128` viene rifiutato invece di panicare;
+  - `OracleUpdateBeforeResolution` / `OracleNotFirstAfterResolution` — le
+    due metà della regola di canonicità (`prev_publish_time <
+    resolution_time <= publish_time`);
+  - `ResolutionWindowClosed` — limite superiore della finestra di
+    risoluzione (B-2): dopo `resolution_time + RESOLUTION_TIMEOUT_SECS`
+    solo il rimborso è possibile;
   - `ZeroWinningStake` / `ZeroPot` — denominatore nullo in claim/refund,
     con codici distinti perché operativamente distinti;
   - `ShareExceedsTotal` — guardia difensiva in `math::pro_rata_share`:
     uno share maggiore del totale restituirebbe più di `payout_pool`
     (violazione I11); oggi impossibile per costruzione a monte, rifiutato
     comunque per costruzione anche qui.
+
+La lista ha ormai divergito abbastanza dalla spec (rimossi ~7 codici,
+aggiunti ~6) da rendere la **riconciliazione unica contro `errors.rs`** a
+fine Fase 1 un prerequisito di freeze esplicito — vedi `DEPLOY.md`.
 
 ## Superficie di attacco esplicitamente esclusa (fuori scope)
 
@@ -176,7 +203,7 @@ al deploy sia quella vera:
 
 - **Costanti di sviluppo (`_DEV`)**: `MIN_STAKE_LAMPORTS`, `MAX_STAKE_LAMPORTS`,
   `MAX_POT_LAMPORTS`, `FEE_WALLET`, `RESOLVER_REWARD`, `MIN_RESOLUTION_GAP_SECS`,
-  `RESOLUTION_CHALLENGE_SECS`, `RESOLUTION_TIMEOUT_SECS`, `CONF_MAX_RATIO_BPS`,
+  `MAX_RESOLUTION_STALENESS_SECS`, `RESOLUTION_TIMEOUT_SECS`, `CONF_MAX_RATIO_BPS`,
   `FEED_WHITELIST` sono tutti placeholder non derivati da dati reali (vedi
   `constants.rs` e `DEVIATIONS.md`). Un deploy mainnet con questi valori
   sarebbe uno deploy con parametri economici e di sicurezza non

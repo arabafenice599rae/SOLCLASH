@@ -75,10 +75,9 @@ pub fn create_event(
     event.bettor_count = 0;
     event.rent_exempt_minimum = Rent::get()?.minimum_balance(Event::SPACE);
     event.status = EventStatus::Open;
-    event.candidate_outcome = None;
-    event.candidate_price_e8 = 0;
-    event.candidate_publish_time = 0;
-    event.finalized_at = 0;
+    event.resolved_outcome = None;
+    event.resolved_price_e8 = 0;
+    event.resolved_publish_time = 0;
     event.payout_pool = 0;
     event.bets_closed = 0;
     // ASSUMPTION (unverified): `ctx.bumps.event` is Anchor 1.x's accessor

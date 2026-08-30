@@ -74,14 +74,6 @@ pub mod solclash_events {
         instructions::resolution::resolve_event(ctx)
     }
 
-    pub fn challenge_resolution(ctx: Context<ChallengeResolution>) -> Result<()> {
-        instructions::resolution::challenge_resolution(ctx)
-    }
-
-    pub fn finalize_resolution(ctx: Context<FinalizeResolution>) -> Result<()> {
-        instructions::resolution::finalize_resolution(ctx)
-    }
-
     pub fn claim(ctx: Context<Claim>) -> Result<()> {
         instructions::settlement::claim(ctx)
     }

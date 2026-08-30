@@ -18,10 +18,6 @@ use anchor_lang::prelude::*;
 /// Protocol fee, fixed by spec at 10% (1_000 bps). Not a TBD.
 pub const PROTOCOL_FEE_BPS: u64 = 1_000;
 
-/// Pyth price update publish-time window, spec-given as "<= 60, ceiling
-/// imposed by the Pyth API". Fixed at the ceiling; not a dev guess.
-pub const PUBLISH_WINDOW_SECS: i64 = 60;
-
 /// Pyth Solana Receiver program (the receiver, NOT the Price Feed program).
 /// Literal taken verbatim from the task spec.
 pub const PYTH_RECEIVER_PROGRAM: Pubkey = pubkey!("rec5EKMGg6MxZYaMdyBfgwp4d5rB9T1VQH5pJv5LtFJ");
@@ -57,17 +53,31 @@ pub const FEE_WALLET_DEV: Pubkey = pubkey!("111111111111111111111111111111111111
 pub const RESOLVER_REWARD_DEV: u64 = 1_820_000 + 2 * 5_000; // 1,830,000 lamports
 
 /// Minimum gap between `betting_close_time` and `resolution_time`. Dev
-/// value: 300s (5 minutes), picked only to be comfortably larger than
-/// `PUBLISH_WINDOW_SECS`. TBD.
+/// value: 300s (5 minutes). TBD.
 pub const MIN_RESOLUTION_GAP_SECS_DEV: i64 = 300;
 
-/// Challenge window after a candidate is written in `resolve_event`, before
-/// `finalize_resolution` is callable. Dev value: 300s (5 minutes). TBD.
-pub const RESOLUTION_CHALLENGE_SECS_DEV: i64 = 300;
+/// Maximum staleness of the canonical resolution update: the gap between
+/// `resolution_time` and the `publish_time` of the first Pyth update
+/// at-or-after it. Under the canonicity rule the resolving update is the
+/// unique one with `prev_publish_time < resolution_time <= publish_time`;
+/// if the feed had an outage right at `resolution_time`, that unique
+/// update can land far in the future, and settling on a price observed
+/// long after the event's moment would be wrong. When
+/// `publish_time - resolution_time` exceeds this cap the outcome is
+/// treated as AMBIGUOUS and the event goes to REFUNDABLE — the same
+/// conservative destination as a straddling confidence band. Dev value:
+/// 120s (Pyth feeds normally update ~1/s, so a 2-minute gap means a real
+/// outage, not jitter). TBD.
+pub const MAX_RESOLUTION_STALENESS_SECS_DEV: i64 = 120;
 
-/// If `LOCKED` sits past `resolution_time + RESOLUTION_TIMEOUT_SECS` with no
-/// candidate at all, the event becomes `REFUNDABLE`. Dev value: 7 days.
-/// TBD.
+/// If `LOCKED` sits past `resolution_time + RESOLUTION_TIMEOUT_SECS`
+/// without ever being resolved, the event becomes `REFUNDABLE`. This is
+/// also the UPPER bound of the resolution window: `resolve_event` is valid
+/// only on `[resolution_time, resolution_time + RESOLUTION_TIMEOUT_SECS)`,
+/// so resolve and the timeout-refund never overlap (they would otherwise
+/// both be callable from `Locked`, and transaction ordering would decide
+/// the payout regime — a security review finding, 2026-08-30). Dev value:
+/// 7 days. TBD.
 pub const RESOLUTION_TIMEOUT_SECS_DEV: i64 = 7 * 24 * 60 * 60;
 
 /// Maximum allowed `conf_e8 * 10_000 / price_e8` ratio in bps before a
@@ -132,7 +142,7 @@ mod tests {
         assert_ne!(MAX_POT_LAMPORTS_DEV, 10_000_000_000_000_000);
         assert_ne!(RESOLVER_REWARD_DEV, 1_820_000 + 2 * 5_000);
         assert_ne!(MIN_RESOLUTION_GAP_SECS_DEV, 300);
-        assert_ne!(RESOLUTION_CHALLENGE_SECS_DEV, 300);
+        assert_ne!(MAX_RESOLUTION_STALENESS_SECS_DEV, 120);
         assert_ne!(RESOLUTION_TIMEOUT_SECS_DEV, 7 * 24 * 60 * 60);
         assert_ne!(CONF_MAX_RATIO_BPS_DEV, 500);
     }

@@ -57,17 +57,22 @@ pub enum SolclashError {
     #[msg("event is not OPEN, cannot be locked")]
     LockNotOpen,
 
-    // ---- resolve_event / challenge_resolution shared oracle checks ----
+    // ---- resolve_event oracle checks ----
     #[msg("PriceUpdateV2 account is not owned by PYTH_RECEIVER_PROGRAM")]
     OracleOwnerMismatch,
     #[msg("PriceUpdateV2.verification_level is not Full")]
     OracleVerificationNotFull,
     #[msg("PriceUpdateV2.price_message.feed_id does not match event.feed_id")]
     OracleFeedMismatch,
-    #[msg("publish_time is after resolution_time")]
-    OraclePublishTimeInFuture,
-    #[msg("publish_time is before resolution_time - PUBLISH_WINDOW_SECS")]
-    OraclePublishTimeTooOld,
+    // Canonicity rule (replaces the old publish-window pair): the resolving
+    // update is the UNIQUE Pyth update with prev_publish_time <
+    // resolution_time <= publish_time — the first update at-or-after the
+    // event's moment. The resolver has no discretion; either the submitted
+    // update is that one, or it is rejected.
+    #[msg("publish_time is before resolution_time (not the update at-or-after the event moment)")]
+    OracleUpdateBeforeResolution,
+    #[msg("prev_publish_time is at or after resolution_time (an earlier update is the canonical one)")]
+    OracleNotFirstAfterResolution,
     #[msg("price is zero or negative")]
     OraclePriceNonPositive,
     #[msg("conf/price ratio exceeds CONF_MAX_RATIO_BPS")]
@@ -80,28 +85,25 @@ pub enum SolclashError {
     EventNotLocked,
     #[msg("resolution_time has not passed yet")]
     ResolveTooEarly,
-
-    // ---- challenge_resolution ----
-    #[msg("event is not RESOLVING")]
-    EventNotResolving,
-    #[msg("challenge window (finalized_at) has already closed")]
-    ChallengeWindowClosed,
-    #[msg("challenge publish_time must be strictly newer than the current candidate")]
-    ChallengeNotNewer,
-
-    // ---- finalize_resolution ----
-    #[msg("finalized_at has not passed yet")]
-    FinalizeTooEarly,
+    #[msg("resolution window has closed (past resolution_time + RESOLUTION_TIMEOUT_SECS); only refund remains")]
+    ResolutionWindowClosed,
     #[msg("fee_wallet does not match FEE_WALLET")]
     FeeWalletMismatch,
+    // Retired with the challenge mechanism (2026-08-30): EventNotResolving,
+    // ChallengeWindowClosed, ChallengeNotNewer, FinalizeTooEarly. The
+    // canonicity check makes the resolving update unique, so there is no
+    // Resolving phase, no challenge, and no finalize step to gate. See
+    // DEVIATIONS.md and the error-code register in SECURITY.md.
 
     // ---- claim / claim_refund ----
     #[msg("event is not RESOLVED")]
     EventNotResolved,
     #[msg("event is not REFUNDABLE")]
     EventNotRefundable,
-    #[msg("cannot claim or refund before finalized_at")]
-    ClaimBeforeFinalized,
+    // Retired with finalized_at (2026-08-30): ClaimBeforeFinalized. With
+    // resolve_event going straight to a terminal state there is no
+    // pre-finalize window, so I13 no longer exists and status == Resolved
+    // / Refundable is the only gate claim/claim_refund need.
     // No NotWinningOutcome: on a Resolved event, claim is how EVERY
     // participant closes their position — a loser's share is simply zero
     // (rent back, no payout), so "loser tries to claim" is not an error

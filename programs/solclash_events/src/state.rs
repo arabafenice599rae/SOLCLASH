@@ -5,11 +5,17 @@ use anchor_lang::prelude::*;
 
 /// Market state machine. See the module doc on `Event::status` for the
 /// full transition diagram.
+///
+/// There is no `Resolving` state: `resolve_event` verifies the canonical
+/// Pyth update (unique by `prev_publish_time < resolution_time <=
+/// publish_time`) and moves straight to a terminal state — `Resolved` for
+/// a definite YES/NO, `Refundable` for an ambiguous or stale outcome.
+/// Because the update is unique there is nothing to challenge, so the old
+/// resolve → challenge → finalize sequence collapses to one instruction.
 #[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum EventStatus {
     Open,
     Locked,
-    Resolving,
     Resolved,
     Refundable,
 }
@@ -18,14 +24,13 @@ pub enum EventStatus {
 ///
 /// Seeds: `["event", creator.key(), event_id.to_le_bytes()]`.
 ///
-/// # `candidate_outcome: None` is not "unresolved"
+/// # `resolved_outcome: None` on a terminal event
 ///
-/// While `status == Resolving`, `candidate_outcome == None` means the last
-/// accepted price update landed inside the confidence band — an AMBIGUOUS
-/// candidate, not a missing one. Whether resolution has even started is
-/// carried entirely by `status`, never inferred from `candidate_outcome`.
-/// An ambiguous candidate can still be overwritten by a later challenge
-/// with a newer `publish_time`, exactly like a YES or NO candidate can.
+/// On a `Resolved` event `resolved_outcome` is always `Some(0|1)`. It is
+/// `None` on a `Refundable` event (ambiguous/stale resolution, one-sided
+/// book, or timeout) and on any pre-terminal event. Whether resolution
+/// happened is carried entirely by `status`, never inferred from
+/// `resolved_outcome`.
 #[account]
 pub struct Event {
     pub creator: Pubkey,
@@ -48,18 +53,19 @@ pub struct Event {
 
     // ---- resolution ----
     pub status: EventStatus,
-    /// `None` while `status != Resolving`/`Resolved` has no meaning; while
-    /// `Resolving`, `None` means "candidate is AMBIGUOUS" (see doc above).
-    /// 0 = NO, 1 = YES. See `constants::OUTCOME_*`.
-    pub candidate_outcome: Option<u8>,
-    pub candidate_price_e8: i128,
-    /// Monotonically non-decreasing while `Resolving`. Always
-    /// `<= resolution_time` and `>= resolution_time - PUBLISH_WINDOW_SECS`.
-    pub candidate_publish_time: i64,
-    /// Set once, by `resolve_event`, to `now + RESOLUTION_CHALLENGE_SECS`.
-    /// Immutable afterwards — a challenge overwrites the candidate but
-    /// never extends this deadline.
-    pub finalized_at: i64,
+    /// The settled outcome, written once at the terminal transition.
+    /// `Some(1)` = YES, `Some(0)` = NO on a `Resolved` event; `None` on a
+    /// `Refundable` event (see the type-level doc above). 0 = NO, 1 = YES,
+    /// per `constants::OUTCOME_*`.
+    pub resolved_outcome: Option<u8>,
+    /// The normalized price that settled the event, kept as an on-chain
+    /// audit record of what `resolve_event` read (supports I10
+    /// reconstructability). Zero on a `Refundable` event that never had a
+    /// valid price (one-sided book, timeout).
+    pub resolved_price_e8: i128,
+    /// `publish_time` of the canonical Pyth update that settled the event.
+    /// Zero on a `Refundable` event that never resolved.
+    pub resolved_publish_time: i64,
     /// Written exactly once, at the OPEN/LOCKED -> terminal transition.
     pub payout_pool: u64,
 
@@ -80,13 +86,13 @@ impl Event {
     /// 8 (discriminator) + 32 (creator) + 8 (event_id) + 32 (feed_id)
     /// + 1 (condition) + 16 (threshold_e8) + 8 (betting_close_time)
     /// + 8 (resolution_time) + 8 (pot) + 8 (yes_stake) + 8 (no_stake)
-    /// + 4 (bettor_count) + 8 (rent_exempt_minimum) + 1 (status: 5 unit
+    /// + 4 (bettor_count) + 8 (rent_exempt_minimum) + 1 (status: 4 unit
     /// variants, borsh-encodes as a 1-byte discriminant) + 2
-    /// (candidate_outcome: Option<u8>, 1-byte tag + at most 1 payload byte)
-    /// + 16 (candidate_price_e8) + 8 (candidate_publish_time)
-    /// + 8 (finalized_at) + 8 (payout_pool) + 4 (bets_closed) + 1 (bump)
-    /// = 197 bytes.
-    pub const SPACE: usize = 8 + 32 + 8 + 32 + 1 + 16 + 8 + 8 + 8 + 8 + 8 + 4 + 8 + 1 + 2 + 16 + 8 + 8 + 8 + 4 + 1;
+    /// (resolved_outcome: Option<u8>, 1-byte tag + at most 1 payload byte)
+    /// + 16 (resolved_price_e8) + 8 (resolved_publish_time)
+    /// + 8 (payout_pool) + 4 (bets_closed) + 1 (bump)
+    /// = 189 bytes (was 197; dropped finalized_at: 8 bytes).
+    pub const SPACE: usize = 8 + 32 + 8 + 32 + 1 + 16 + 8 + 8 + 8 + 8 + 8 + 4 + 8 + 1 + 2 + 16 + 8 + 8 + 4 + 1;
 
     /// Lamports the PDA must hold on top of `rent_exempt_minimum`,
     /// depending on which phase of the state machine it is in. Before a
@@ -100,7 +106,7 @@ impl Event {
     /// for why strict equality is unsafe (dust-lamport griefing).
     pub fn outstanding_liability(&self) -> u64 {
         match self.status {
-            EventStatus::Open | EventStatus::Locked | EventStatus::Resolving => self.pot,
+            EventStatus::Open | EventStatus::Locked => self.pot,
             EventStatus::Resolved | EventStatus::Refundable => self.payout_pool,
         }
     }

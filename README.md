@@ -56,19 +56,21 @@ OPEN ──cancel_bet consentito solo prima di betting_close_time
  ▼
 LOCKED
  ├── book monolaterale → REFUNDABLE (payout_pool = pot, rimborso 100%)
- │ resolution_time → resolve_event() + Pyth Full
- ▼
-RESOLVING ◄── challenge_resolution() (solo publish_time MAGGIORE, e <= resolution_time)
- │ finalized_at IMMUTABILE → finalize_resolution()
- ├── candidato ambiguo → REFUNDABLE
+ │ resolution_time → resolve_event() + Pyth Full + canonicità
+ │   (valido solo in [resolution_time, resolution_time + TIMEOUT))
+ ├── candidato ambiguo o stantìo → REFUNDABLE
  └── YES/NO → RESOLVED
  ▼
 claim × N / claim_refund × N → close_event
 
-LOCKED oltre resolution_time + RESOLUTION_TIMEOUT_SECS senza candidato → REFUNDABLE
+LOCKED oltre resolution_time + RESOLUTION_TIMEOUT_SECS → mark_refundable() → REFUNDABLE
 ```
 
-Due precisazioni rispetto alla spec originale (motivate dal security
+`resolve_event` va **direttamente** a RESOLVED o REFUNDABLE in un'unica
+transazione: non c'è uno stato RESOLVING intermedio, né `challenge_resolution`,
+né `finalize_resolution`. Vedi sotto.
+
+Tre precisazioni rispetto alla spec originale (motivate dal security
 review del 2026-08-30, dettagli in `DEVIATIONS.md`):
 
 - **`cancel_bet`** è consentito in OPEN **e prima di `betting_close_time`**.
@@ -80,6 +82,20 @@ review del 2026-08-30, dettagli in `DEVIATIONS.md`):
   propria posizione, incassando se ha vinto". Su un evento RESOLVED anche
   i perdenti chiamano `claim` — la loro quota è zero, il `BetEntry` si
   chiude comunque restituendo il rent, e `close_event` resta raggiungibile.
+- **Il meccanismo di sfida è stato rimosso.** La spec risolveva in tre
+  istruzioni (`resolve_event` → `challenge_resolution` → `finalize_resolution`)
+  con uno stato RESOLVING e una finestra di sfida, per convergere sull'update
+  più recente in una finestra di ±60s. Non era un disegno sbagliato: era una
+  *mitigazione* dove in realtà è possibile una *verifica*. Pyth pubblica
+  `prev_publish_time` in ogni messaggio, e per ogni istante T l'update unico
+  è quello con `prev_publish_time < T <= publish_time`. `resolve_event` ora
+  **verifica** questa disuguaglianza on-chain: l'update di risoluzione è
+  provabilmente quello canonico, il risolutore non ha discrezione, e non
+  c'è più niente da sfidare. Se il feed ha un buco a `resolution_time`
+  (update canonico più vecchio di `MAX_RESOLUTION_STALENESS_SECS`), l'esito
+  è AMBIGUO → REFUNDABLE. La regola cambia da "ultimo update prima di T"
+  (spec) a "primo update a/dopo T" (Pyth) — la variante verificabile dello
+  stesso intento.
 
 Dettagli completi (istruzioni, invarianti, formula di normalizzazione
 del prezzo, confidence band) in `SECURITY.md`.

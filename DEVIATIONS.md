@@ -67,43 +67,36 @@ let outstanding = match status {
 require!(lamports >= event.rent_exempt_minimum + outstanding, EscrowMismatch);
 ```
 
-Ho implementato questa formula esattamente com'è (`Event::outstanding_liability`
-in `state.rs`), ma **non** è auto-consistente in ogni punto in cui `event`
-viene toccato, per due ragioni distinte:
+**Aggiornamento 2026-08-30**: con la rimozione del meccanismo di sfida
+(vedi sotto) lo stato `Resolving` non esiste più, quindi
+`outstanding_liability` ha solo due rami: `Open | Locked => pot`,
+`Resolved | Refundable => payout_pool`. La tensione descritta sotto si
+semplifica di conseguenza. Il testo originale è mantenuto per traccia
+storica, con le correzioni inline.
 
-1. **`resolve_event` paga `RESOLVER_REWARD` nella stessa istruzione in cui
-   porta lo stato a `Resolving`.** Se il controllo venisse eseguito *dopo*
-   il pagamento, `lamports < rent + pot` per costruzione (il reward è
-   uscito, `pot` no). L'ho quindi collocato **subito dopo** la scrittura
-   dello stato `Resolving` ma **prima** del pagamento del reward — in quel
-   preciso istante il saldo è ancora esattamente `rent + pot`, quindi il
-   controllo è valido. Il pagamento avviene subito dopo, senza un secondo
-   controllo.
-2. **Per il resto della fase `Resolving`** (cioè dentro
-   `challenge_resolution`, che non muove lamport), il saldo reale è
-   permanentemente `rent + pot - RESOLVER_REWARD_DEV`, quindi la formula
-   letterale (`Resolving => pot`) non può più essere soddisfatta. Ho scelto
-   di **non chiamare affatto** il controllo generico dentro
-   `challenge_resolution`, piuttosto che alterare la formula data o
-   inventare un secondo campo di stato non richiesto dalla spec. Una
-   versione più precisa (`lamports >= rent + pot - RESOLVER_REWARD_DEV`)
-   sarebbe l'equivalente corretto, ma non l'ho aggiunta per non allontanarmi
-   dalla formula fornita testualmente.
+Ho implementato la formula (`Event::outstanding_liability` in `state.rs`),
+ma **non** è auto-consistente in ogni punto in cui `event` viene toccato:
+
+1. **`resolve_event` paga `RESOLVER_REWARD` (e la fee) nella stessa
+   istruzione in cui porta lo stato a un terminale.** Nel disegno attuale
+   il controllo di escrow è collocato **alla fine**, sullo stato terminale
+   di riposo: dopo che fee e reward sono usciti, il PDA trattiene
+   esattamente `rent + payout_pool`, e `outstanding_liability` per
+   `Resolved|Refundable` è `payout_pool`, quindi `lamports >= rent +
+   payout_pool` vale (con `==`, più l'eventuale dust come slack per il
+   `>=`). Non serve più il collocamento delicato "prima del pagamento del
+   reward" che il vecchio disegno a `Resolving` richiedeva.
+2. ~~Per il resto della fase `Resolving` (dentro `challenge_resolution`)~~
+   **Obsoleto**: non c'è più fase `Resolving` né `challenge_resolution`.
 3. **Dentro `claim`/`claim_refund`**, `payout_pool` rappresenta il totale
    originale al momento della transizione terminale, non il residuo dopo i
    pagamenti già effettuati. La formula letterale (`Resolved|Refundable =>
-   payout_pool`) smette di essere vera dopo il primo claim riuscito (il
-   saldo scende sotto `rent + payout_pool`). Ho quindi chiamato questo
-   controllo **solo** ai punti di transizione (`lock_event`,
-   `mark_refundable`, `finalize_resolution`), mai dentro `claim`/
-   `claim_refund`/`close_event`, e ho documentato che la correttezza lì si
-   appoggia invece sulla proprietà matematica della divisione floor (I11),
-   non su un controllo di saldo ripetuto.
-
-Questa è l'interpretazione più coerente che ho trovato con "il controllo va
-eseguito al momento della transizione di stato, prima di ogni movimento di
-lamport successivo nella stessa istruzione" — ma è una mia lettura, non un
-fatto dato esplicitamente dalla spec, e andrebbe confermata.
+   payout_pool`) smette di essere vera dopo il primo claim riuscito. Ho
+   quindi chiamato questo controllo **solo** ai punti di transizione
+   (`lock_event`, `mark_refundable`, `resolve_event`), mai dentro `claim`/
+   `claim_refund`/`close_event`, e la correttezza lì si appoggia sulla
+   proprietà matematica della divisione floor (I11), non su un controllo di
+   saldo ripetuto.
 
 ## `close_event`: destinatario del residuo
 
@@ -180,12 +173,56 @@ anche inline nel codice sorgente dove usata:
 
 `instructions/resolution.rs` referenzia direttamente
 `oracle::mock::MockPriceUpdate` come tipo di account per `price_update` in
-`ResolveEvent`/`ChallengeResolution`, non dietro una feature flag,
-perché in Fase 1 non esiste alcuna alternativa. Quando la Fase 3
-aggiungerà un percorso reale verso `PriceUpdateV2`, servirà decidere come
-le due istruzioni scelgono fra mock e reale (due varianti di istruzione,
-un parametro generico, o un'astrazione a runtime) — non deciso qui,
-esplicitamente fuori scope per questa bozza.
+`ResolveEvent`, non dietro una feature flag, perché in Fase 1 non esiste
+alcuna alternativa. Quando la Fase 3 aggiungerà un percorso reale verso
+`PriceUpdateV2`, servirà decidere come `resolve_event` sceglie fra mock e
+reale (due varianti di istruzione, un parametro generico, o un'astrazione
+a runtime) — non deciso qui, esplicitamente fuori scope per questa bozza.
+
+## Rimozione del meccanismo di sfida (2026-08-30) e assunzione Fase 3
+
+Su indicazione dell'utente, dopo il finding B-1 del security review, il
+disegno a tre istruzioni della spec (`resolve_event` →
+`challenge_resolution` → `finalize_resolution`, con stato `Resolving`,
+campi `candidate_*`, `finalized_at`, `PUBLISH_WINDOW_SECS`,
+`RESOLUTION_CHALLENGE_SECS`, e le invarianti I8/I13) è stato **rimosso**,
+non riparametrato. Al suo posto `resolve_event` verifica on-chain la
+canonicità dell'update (`prev_publish_time < resolution_time <=
+publish_time`) e va direttamente a un terminale. Razionale: il disegno a
+sfida non era sbagliato, era una *mitigazione* di un problema — "quale dei
+~60 update in finestra è quello giusto" — dove in realtà è disponibile una
+*verifica*, perché Pyth pubblica `prev_publish_time` e quella disuguaglianza
+individua l'update in modo univoco. Una mitigazione che dipende da qualcuno
+che sfida entro una finestra breve e non finanziata è strettamente peggiore
+di un controllo che rende l'update provabilmente unico. Dettaglio del
+cambiamento in README, SECURITY.md (I10 riscritta, I8/I13 ritirate) e nel
+registro error code.
+
+**B-2, corretto nello stesso passaggio** (race resolve/refund dopo il
+timeout): `resolve_event` non aveva un limite temporale superiore, quindi
+dopo `resolution_time + RESOLUTION_TIMEOUT_SECS` era simultaneamente
+valido con `mark_refundable` dallo stato `Locked`, e l'ordinamento delle
+transazioni decideva il regime di payout (winner-take-all + fee vs rimborso
+pro-rata). Aggiunto `require!(now < resolution_time +
+RESOLUTION_TIMEOUT_SECS_DEV, ResolutionWindowClosed)` in `resolve_event`:
+le due finestre sono ora disgiunte (`<` vs `>=` sul secondo esatto),
+stesso stile di confine di `place_bet`/`cancel_bet`/`lock_event`. Test E29.
+
+**Assunzione da verificare in Fase 3, VINCOLANTE prima di qualunque
+deploy:** che `prev_publish_time` in un `PriceUpdateV2`/`PriceFeedMessage`
+reale sia effettivamente il `publish_time` dell'update **immediatamente
+precedente per lo stesso feed** — cioè che non esista un update pubblicato
+fra `prev_publish_time` e `publish_time` per quel feed. Solo così la
+disuguaglianza `prev_publish_time < resolution_time <= publish_time`
+individua un update **unico**. `docs/pyth-reference.md` §2 riporta la
+semantica dichiarata da Pyth ("per ogni t, l'update unico è quello con
+`prev_publish_time < t <= publish_time`"), ma nota anche che durante
+migrazioni `prev_publish_time` può essere uguale a `publish_time` o saltare
+update. **Da confermare su byte reali di devnet: due update consecutivi
+dello stesso feed, verificando che `update_2.prev_publish_time ==
+update_1.publish_time`.** Se questa proprietà non regge in pratica, la
+canonicità non è garantita e il disegno a sfida va ripristinato — questa è
+la condizione esplicita a cui è appesa la rimozione della sfida.
 
 ## Normalizzazione di `conf`: ceiling, in deviazione dallo step 7 della spec
 

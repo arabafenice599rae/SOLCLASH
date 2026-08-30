@@ -1,14 +1,23 @@
 // STATUS: NEVER COMPILED — draft written without a
 // toolchain. Fase 0 not performed. Nothing here is verified.
 
-//! The single Pyth boundary of the whole program. `resolve_event` and
-//! `challenge_resolution` share ~90% of their price-update verification
-//! (spec steps 2-8); duplicating that logic across two instruction
-//! handlers is exactly the place where the two copies could drift apart
-//! and turn into a vulnerability, so it lives here once, as
-//! `verify_price_update`, and both instructions in `instructions/resolution.rs`
-//! call it as a wrapper around their own instruction-specific pre/post
-//! conditions (status checks, reward payment, candidate monotonicity).
+//! The single Pyth boundary of the whole program. `resolve_event` is the
+//! only caller of `verify_price_update`; the challenge mechanism was
+//! removed once the update became provably unique on-chain (see below), so
+//! there is no second copy of this verification to drift out of sync.
+//!
+//! # Canonicity replaces the publish-window + challenge design
+//!
+//! The old design accepted any update whose `publish_time` fell in a
+//! `[resolution_time - 60, resolution_time]` window and relied on a
+//! challenge round to converge on the newest one — a mitigation that
+//! depended on someone posting a correction inside a short, unfunded
+//! window (a security review finding, 2026-08-30). Pyth's own message
+//! carries `prev_publish_time`, and for any instant `t` the unique update
+//! is the one with `prev_publish_time < t <= publish_time` (see
+//! docs/pyth-reference.md §2). Requiring exactly that here makes the
+//! resolving update *provably* the canonical one for `resolution_time`,
+//! with zero resolver discretion — so there is nothing to challenge.
 //!
 //! Fase 1 only wires the `oracle-mock` path: no `pyth-solana-receiver-sdk`
 //! dependency exists in this draft at all. Fase 3 is expected to add a
@@ -16,7 +25,7 @@
 //! `mainnet`/non-mock feature) that produces the same `ExtractedPriceUpdate`
 //! shape, so `verify_price_update` itself does not need to change.
 
-use crate::constants::{CONF_MAX_RATIO_BPS_DEV, PUBLISH_WINDOW_SECS, PYTH_RECEIVER_PROGRAM};
+use crate::constants::{CONF_MAX_RATIO_BPS_DEV, PYTH_RECEIVER_PROGRAM};
 use crate::errors::SolclashError;
 use crate::math::{confidence_ratio_bps, normalize_conf_to_e8, normalize_price_to_e8};
 use anchor_lang::prelude::*;
@@ -43,10 +52,20 @@ pub struct ExtractedPriceUpdate {
     pub conf: u64,
     pub exponent: i32,
     pub publish_time: i64,
+    /// `publish_time` of the immediately preceding update for the same
+    /// feed — the field that lets `verify_price_update` prove this update
+    /// is the canonical one for `resolution_time`. From Pyth's
+    /// `PriceFeedMessage.prev_publish_time` on the real path (Fase 3).
+    pub prev_publish_time: i64,
 }
 
 /// Result of a successful `verify_price_update` call: a fully normalized,
-/// confidence-checked price ready for `math::resolve_confidence_band`.
+/// confidence-checked price ready for `math::resolve_confidence_band`. The
+/// staleness policy (how far after `resolution_time` the canonical update
+/// may land before the outcome is treated as ambiguous) lives in
+/// `resolve_event`, not here, because it changes the destination state
+/// rather than rejecting the update — so `publish_time` is returned for
+/// that caller to check.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct VerifiedPrice {
     pub price_e8: i128,
@@ -54,39 +73,40 @@ pub struct VerifiedPrice {
     pub publish_time: i64,
 }
 
-/// Spec steps 2-8, in order. Step 1 (status/timing preconditions) and step
-/// 9-10 (confidence band, state writes, reward) are instruction-specific
-/// and live in `instructions/resolution.rs`; this function is the shared
-/// middle.
+/// Owner / verification / feed / canonicity / price / confidence checks,
+/// in order. Status and timing preconditions, the confidence-band
+/// outcome, the staleness policy, and the state writes are all
+/// `resolve_event`'s job; this function is the shared oracle gate.
 pub fn verify_price_update(
     update: &ExtractedPriceUpdate,
     event_feed_id: [u8; 32],
     resolution_time: i64,
 ) -> Result<VerifiedPrice> {
-    require!(update.owner_ok, SolclashError::OracleOwnerMismatch); // step 2
+    require!(update.owner_ok, SolclashError::OracleOwnerMismatch);
     require!(
         update.verification_full,
         SolclashError::OracleVerificationNotFull
-    ); // step 3
+    );
     require!(
         update.feed_id == event_feed_id,
         SolclashError::OracleFeedMismatch
-    ); // step 4
-
-    // step 5: publish_time <= resolution_time AND publish_time >= resolution_time - PUBLISH_WINDOW_SECS
-    require!(
-        update.publish_time <= resolution_time,
-        SolclashError::OraclePublishTimeInFuture
-    );
-    let earliest_valid = resolution_time
-        .checked_sub(PUBLISH_WINDOW_SECS)
-        .ok_or(SolclashError::MathOverflow)?;
-    require!(
-        update.publish_time >= earliest_valid,
-        SolclashError::OraclePublishTimeTooOld
     );
 
-    require!(update.price > 0, SolclashError::OraclePriceNonPositive); // step 6
+    // Canonicity: prev_publish_time < resolution_time <= publish_time makes
+    // this the UNIQUE Pyth update for the instant `resolution_time`. The
+    // `<=` on the upper side means an update published exactly at
+    // resolution_time resolves the event (boundary must succeed). No
+    // window, no challenge — the resolver cannot pick among candidates.
+    require!(
+        update.publish_time >= resolution_time,
+        SolclashError::OracleUpdateBeforeResolution
+    );
+    require!(
+        update.prev_publish_time < resolution_time,
+        SolclashError::OracleNotFirstAfterResolution
+    );
+
+    require!(update.price > 0, SolclashError::OraclePriceNonPositive);
 
     // step 7: same exponent for both fields, but different rounding on
     // the scale-down branch — price truncates (spec-literal formula),
@@ -146,6 +166,11 @@ pub mod mock {
         pub conf: u64,
         pub exponent: i32,
         pub publish_time: i64,
+        /// Mirrors Pyth's `PriceFeedMessage.prev_publish_time`; the mock
+        /// carries it so canonicity tests can drive both the accepted case
+        /// (`prev_publish_time < resolution_time <= publish_time`) and the
+        /// two rejections.
+        pub prev_publish_time: i64,
     }
 
     /// Reduces a `MockPriceUpdate` to the shape `verify_price_update`
@@ -160,6 +185,7 @@ pub mod mock {
             conf: update.conf,
             exponent: update.exponent,
             publish_time: update.publish_time,
+            prev_publish_time: update.prev_publish_time,
         }
     }
 }
