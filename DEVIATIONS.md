@@ -197,24 +197,18 @@ coerenza interna — non un valore dato esplicitamente dalla spec.
 ## Gap trovati confrontando `SECURITY.md` con `solana-dev-skill/references/security.md`
 
 Vedi `docs/toolchain-notes.md` §4 per il confronto completo, voce per
-voce, con la checklist di sicurezza generica di `solana-dev-skill`. Due
-punti concreti, non coperti da un test dedicato in questa bozza:
+voce, con la checklist di sicurezza generica di `solana-dev-skill`. I due
+gap concreti emersi sono stati entrambi chiusi come segue (registrati qui
+solo come traccia della decisione):
 
-- **Lamport griefing sull'`init` di `Event`**: nessun test Fase-2 previsto
-  per "creare un `Event` la cui PDA ha già ricevuto dust prima di
-  `create_event`". Il vincolo `init` di Anchor dovrebbe gestirlo
-  internamente (trasferisce solo il deficit, non l'intero rent-exempt
-  minimum), ma non è un comportamento che questa bozza verifica
-  esplicitamente. Da aggiungere alla lista di test della Fase 2 quando un
-  toolchain esiste.
-- **`overflow-checks = true` nel `Cargo.toml` di workspace**: alcune
-  versioni di Anchor (0.30, per `common-errors.md:310-319` del
-  `solana-dev-skill`) lo richiedono esplicitamente nel `[profile.release]`
-  del workspace, altrimenti il build fallisce. Questa bozza non ha un
-  `Cargo.toml` (per istruzione esplicita dell'utente), quindi non è
-  ancora verificabile se Anchor 1.x lo richieda ancora esplicitamente o se
-  sia ormai un default — promemoria per quando il `Cargo.toml` reale verrà
-  scritto in Fase 0.
+- **Lamport griefing sull'`init` di `Event`** → aggiunto come test **E26**
+  in `tests/phase2-test-plan.md`: lamport inviati all'indirizzo PDA
+  dell'`Event` prima di `create_event`; atteso che il vincolo `init` di
+  Anchor trasferisca solo il deficit di rent e la creazione riesca.
+- **`overflow-checks = true` nel `[profile.release]` del workspace** →
+  promosso a **requisito di Fase 0** in `DEPLOY.md` (sezione
+  Prerequisiti), non più una nota aperta: va nel `Cargo.toml` di workspace
+  quando verrà scritto.
 
 ## Layout byte di `PriceUpdateV2` — dipendenza dalla variante di `verification_level`
 

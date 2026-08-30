@@ -241,10 +241,27 @@ Risolto nel workspace root, `target_chains/solana/Cargo.toml:31`:
 anchor-lang = "1.0.2"
 ```
 
-**`pyth-solana-receiver-sdk` è pinnato ad `anchor-lang = "1.0.2"`** su
-questo commit. Il crate stesso è alla versione `2.0.0`
+**Attenzione alla semantica**: la riga è `anchor-lang = "1.0.2"` — senza
+`=` davanti alla versione. In Cargo un requirement nudo è un **caret
+requirement** (`^1.0.2`), cioè `>= 1.0.2, < 2.0.0`: **non** è un pin
+esatto. `anchor-lang` 1.1.2 soddisfa questo requirement dal punto di vista
+del resolver. Righe testuali verificate con `cat -A` (nessun carattere
+nascosto), sul commit `465e8dcb5592c57b4909a6cb933d58d6d6b50a43`:
+
+```
+target_chains/solana/pyth_solana_receiver_sdk/Cargo.toml:18
+anchor-lang = { workspace = true }
+
+target_chains/solana/Cargo.toml:31
+anchor-lang = "1.0.2"
+```
+
+Il crate stesso è alla versione `2.0.0`
 (`target_chains/solana/pyth_solana_receiver_sdk/Cargo.toml:3`, non
-riportato sopra ma letto dallo stesso file).
+riportato sopra ma letto dallo stesso file). Che l'SDK compili
+*effettivamente* contro `anchor-lang` 1.1.x resta da verificare in Fase 0
+(la compatibilità del resolver non implica compatibilità di API); questo
+documento registra solo cosa dichiara il manifest.
 
 ---
 

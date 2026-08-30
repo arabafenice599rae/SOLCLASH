@@ -43,10 +43,10 @@ OS: Ubuntu 24.04+ (GLIBC ≥2.39) o macOS 14+
 
 Combinazione alternativa per **"Anchor 1.0.x esistenti"**
 (`compatibility-matrix.md:209-224`), rilevante se il ramo A/B della Fase 0
-(pin di `anchor-lang` portato da `pyth-solana-receiver-sdk`, che
-`docs/pyth-reference.md` §4 fissa a `anchor-lang = "1.0.2"` sul commit
-`465e8dcb...` di `pyth-crosschain`) forzasse a restare su 1.0.x invece che
-salire a 1.1.x:
+(requirement `anchor-lang` portato da `pyth-solana-receiver-sdk`, che
+`docs/pyth-reference.md` §4 riporta come caret `"1.0.2"` — cioè
+`^1.0.2` — sul commit `465e8dcb...` di `pyth-crosschain`) forzasse in
+pratica a restare su 1.0.x invece che salire a 1.1.x:
 
 ```
 Anchor CLI: 1.0.3
@@ -58,15 +58,22 @@ Rust: 1.79–1.85+
 Node.js: 20.x LTS
 ```
 
-**Il pin di `pyth-solana-receiver-sdk` è `anchor-lang = "1.0.2"` esatto**
-(non un range) — questo è già più stretto di entrambe le righe sopra (che
-parlano di 1.0.x/1.1.x come famiglie). Il primo tentativo suggerito da
-questa fonte per il ramo A della Fase 0 è quindi: **Anchor CLI 1.0.x**
-(non 1.1.x) con `anchor-lang` pinnato esattamente a `1.0.2` nel progetto,
-Solana CLI 3.x, Rust 1.79–1.85+, così l'SDK Pyth compila senza dover
-toccare il pin. Se questo confligge (vincolo assoluto della spec originale:
-non abbassare la versione di Anchor del Core per farlo tornare), il ramo B
-della Fase 0 (leggere la versione portata nel `Cargo.lock`, poi
+**Correzione (verificata su richiesta, riga testuale con `cat -A`)**: il
+requirement di `pyth-solana-receiver-sdk` è `anchor-lang = "1.0.2"`
+(via `{ workspace = true }` in
+`target_chains/solana/pyth_solana_receiver_sdk/Cargo.toml:18`, risolto in
+`target_chains/solana/Cargo.toml:31` sul commit `465e8dcb...` di
+`pyth-crosschain`) — **senza `=` davanti**: in Cargo è un caret
+requirement (`^1.0.2`, cioè `>= 1.0.2, < 2.0.0`), **non un pin esatto**.
+`anchor-lang` 1.1.2 lo soddisfa a livello di resolver. Una versione
+precedente di questo documento lo descriveva erroneamente come pin esatto
+e ne derivava la raccomandazione di partire da Anchor 1.0.x: quella
+inferenza cade. Il primo tentativo per il ramo A della Fase 0 può quindi
+essere direttamente la riga **Anchor 1.1.x raccomandata**
+(`compatibility-matrix.md:192-207`), con l'avvertenza che la
+compatibilità del resolver non garantisce che l'SDK compili davvero
+contro le API di 1.1.x — se il build fallisce, il ramo B della spec
+(leggere la versione risolta nel `Cargo.lock`, poi
 `cargo update -p anchor-lang@... --precise ...`) resta la via indicata
 dalla spec, non una scelta di questo documento.
 

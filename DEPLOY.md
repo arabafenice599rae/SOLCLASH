@@ -24,6 +24,16 @@
 - Tutte le costanti `_DEV` in `constants.rs` sostituite con valori reali,
   ragionati, e congelati sotto la feature `mainnet` (il test
   `mainnet_constants_are_frozen` deve passare).
+- **`overflow-checks = true` nel `[profile.release]` del `Cargo.toml` di
+  workspace** — requisito, non opzione. Anchor lo esige esplicitamente
+  almeno dalla 0.30 (build rifiutato altrimenti, vedi
+  `solana-dev-skill/references/common-errors.md:310-319`, commit
+  `68ee828a...`), e lo stesso workspace Pyth lo dichiara
+  (`pyth-crosschain/target_chains/solana/Cargo.toml:8-9`, commit
+  `465e8dcb...`). Per questo programma non è solo un requisito di
+  toolchain ma difesa in profondità: rende panic anche un'eventuale
+  aritmetica non-checked sfuggita alla revisione, invece di un wraparound
+  silenzioso in release.
 
 ## Verifica del build: `solana-verify`
 
