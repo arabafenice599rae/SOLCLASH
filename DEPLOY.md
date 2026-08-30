@@ -24,6 +24,15 @@
 - Tutte le costanti `_DEV` in `constants.rs` sostituite con valori reali,
   ragionati, e congelati sotto la feature `mainnet` (il test
   `mainnet_constants_are_frozen` deve passare).
+- **Lista degli error code riconciliata contro `errors.rs`** — una volta
+  sola, a fine Fase 1, prima di qualunque freeze documentale. `errors.rs`
+  è la fonte di verità; la lista della spec originale è già divergita in
+  entrambe le direzioni (rimossi `NotWinningOutcome` e i codici resi
+  superflui dai seed PDA; aggiunti `ShareExceedsTotal`,
+  `OracleExponentOutOfRange`, `ZeroWinningStake`, `ZeroPot`, rinominato
+  `OraclePriceNonPositive`) — vedi il registro in `SECURITY.md`.
+  Congelare una lista che non corrisponde a `errors.rs` significa
+  congelare un documento sbagliato.
 - **`overflow-checks = true` nel `[profile.release]` del `Cargo.toml` di
   workspace** — requisito, non opzione. Anchor lo esige esplicitamente
   almeno dalla 0.30 (build rifiutato altrimenti, vedi
