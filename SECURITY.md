@@ -87,12 +87,36 @@ citati con `cargo doc`-style link.
 - **I12 — Nessun esito `Some` se `[price - conf, price + conf]` attraversa
   la soglia.** `math::resolve_confidence_band` restituisce `None`
   (AMBIGUO) in ogni caso che non soddisfi esplicitamente la condizione YES
-  o esplicitamente la condizione NO — non c'è un default silenzioso.
+  o esplicitamente la condizione NO — non c'è un default silenzioso. La
+  normalizzazione di `conf` arrotonda **per eccesso** (ceiling,
+  `math::normalize_conf_to_e8`), mentre il prezzo tronca (formula letterale
+  della spec): l'errore di arrotondamento può quindi solo *allargare* la
+  banda, mai restringerla — un caso di frontiera può degradare verso
+  AMBIGUO, mai promuoversi a esito definito. Verificato anche come
+  proprietà su terne pseudo-casuali nei test inline di `math.rs`.
 - **I13 — Nessun pagamento ai partecipanti prima di `finalized_at`.**
   Garantito transitivamente dalla macchina a stati (`status == Resolved`
   implica già `now >= finalized_at`, dato che `finalize_resolution` lo
   richiede e `finalized_at` è immutabile), più un controllo diretto
   ridondante in `claim`/`claim_refund` come difesa in profondità.
+
+## Registro error code rispetto alla lista della spec
+
+`errors.rs` è la fonte di verità. Divergenze deliberate dalla lista di
+error code della spec originale, registrate qui perché la lista congelata
+al deploy sia quella vera:
+
+- **Rinominato**: `OraclePriceNonPositive` (la spec usava questo nome; una
+  prima stesura del codice lo chiamava `OracleInvalidPrice` — allineato).
+- **Aggiunti (necessari, non previsti dalla spec)**:
+  - `OracleExponentOutOfRange` — un exponent che renderebbe `10^n` fuori
+    da `i128` viene rifiutato invece di panicare;
+  - `ZeroWinningStake` / `ZeroPot` — denominatore nullo in claim/refund,
+    con codici distinti perché operativamente distinti;
+  - `ShareExceedsTotal` — guardia difensiva in `math::pro_rata_share`:
+    uno share maggiore del totale restituirebbe più di `payout_pool`
+    (violazione I11); oggi impossibile per costruzione a monte, rifiutato
+    comunque per costruzione anche qui.
 
 ## Superficie di attacco esplicitamente esclusa (fuori scope)
 

@@ -22,11 +22,12 @@ pub mod errors {
     #[derive(Debug, PartialEq, Eq, Clone, Copy)]
     pub enum SolclashError {
         InvalidCondition,
-        OracleInvalidPrice,
+        OraclePriceNonPositive,
         OracleExponentOutOfRange,
         MathOverflow,
         ZeroWinningStake,
         ZeroPot,
+        ShareExceedsTotal,
     }
 }
 

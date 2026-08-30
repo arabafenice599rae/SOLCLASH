@@ -69,7 +69,7 @@ pub enum SolclashError {
     #[msg("publish_time is before resolution_time - PUBLISH_WINDOW_SECS")]
     OraclePublishTimeTooOld,
     #[msg("price is zero or negative")]
-    OracleInvalidPrice,
+    OraclePriceNonPositive,
     #[msg("conf/price ratio exceeds CONF_MAX_RATIO_BPS")]
     OracleConfidenceTooWide,
     #[msg("exponent is out of the supported normalization range")]
@@ -126,4 +126,6 @@ pub enum SolclashError {
     ZeroWinningStake,
     #[msg("pot is zero, refund cannot be computed")]
     ZeroPot,
+    #[msg("share stake exceeds total stake, pro-rata payout refused")]
+    ShareExceedsTotal,
 }

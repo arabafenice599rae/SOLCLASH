@@ -187,6 +187,28 @@ le due istruzioni scelgono fra mock e reale (due varianti di istruzione,
 un parametro generico, o un'astrazione a runtime) — non deciso qui,
 esplicitamente fuori scope per questa bozza.
 
+## Normalizzazione di `conf`: ceiling, in deviazione dallo step 7 della spec
+
+Lo step 7 della spec dice testualmente "stessa normalizzazione per conf:
+usa lo stesso exponent", e la formula data usa `checked_div` (troncatura).
+Su indicazione esplicita dell'utente in revisione (2026-08-30), `conf`
+ora arrotonda **per eccesso** sul ramo di scale-down
+(`math::normalize_conf_to_e8`), separata da `normalize_price_to_e8` che
+resta troncante come da formula: troncare `conf` restringe la banda di
+confidenza e rende il protocollo più incline a dichiarare un esito
+definito vicino alla soglia — l'opposto della direzione conservativa di
+I12. Lo stesso exponent resta condiviso (quella parte dello step 7 vale
+ancora); cambia solo la direzione di arrotondamento. Magnitudine massima
+dell'effetto: <1 unità e8 a exponent −9.
+
+**Nota correlata, non ancora decisa**: la formula dello step 8
+(`conf_e8 * 10_000 / price_e8`, in `math::confidence_ratio_bps`) tronca
+anch'essa, e la troncatura lì va nella stessa direzione anti-conservativa
+(un feed marginalmente troppo largo può passare il gate
+`CONF_MAX_RATIO_BPS` per arrotondamento). È la formula letterale della
+spec ed è rimasta tale; la magnitudine è sub-bps. Segnalata, decisione
+lasciata all'utente.
+
 ## Arrotondamento della protocol fee
 
 La spec dà la formula `protocol_fee = (pot - RESOLVER_REWARD) × 10%` senza

@@ -182,7 +182,7 @@ più diretta per quel file specifico. `testing.md:385` cita anche
 `cargo-fuzz`/`libFuzzer` esplicitamente come adatto a "pure helpers (math,
 parsing)" senza il runtime Solana completo — coerente con l'approccio già
 scelto per `math.rs` (fixture Python indipendenti, Task B) e un candidato
-naturale per un fuzz target futuro su `normalize_to_e8`/
+naturale per un fuzz target futuro su `normalize_price_to_e8`/`normalize_conf_to_e8`/
 `resolve_confidence_band` una volta che un toolchain esiste.
 
 Per la **Fase 2** della spec originale (test end-to-end con `oracle-mock`,

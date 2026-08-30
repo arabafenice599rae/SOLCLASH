@@ -18,7 +18,7 @@
 
 use crate::constants::{CONF_MAX_RATIO_BPS_DEV, PUBLISH_WINDOW_SECS, PYTH_RECEIVER_PROGRAM};
 use crate::errors::SolclashError;
-use crate::math::{confidence_ratio_bps, normalize_to_e8};
+use crate::math::{confidence_ratio_bps, normalize_conf_to_e8, normalize_price_to_e8};
 use anchor_lang::prelude::*;
 
 /// Oracle data already reduced to the fields `verify_price_update` needs,
@@ -86,11 +86,14 @@ pub fn verify_price_update(
         SolclashError::OraclePublishTimeTooOld
     );
 
-    require!(update.price > 0, SolclashError::OracleInvalidPrice); // step 6
+    require!(update.price > 0, SolclashError::OraclePriceNonPositive); // step 6
 
-    // step 7: normalize both price and conf with the same exponent
-    let price_e8 = normalize_to_e8(update.price as i128, update.exponent)?;
-    let conf_e8 = normalize_to_e8(update.conf as i128, update.exponent)?;
+    // step 7: same exponent for both fields, but different rounding on
+    // the scale-down branch — price truncates (spec-literal formula),
+    // conf rounds UP so rounding can only widen the band, never narrow
+    // it toward a definite outcome (I12). See math.rs and DEVIATIONS.md.
+    let price_e8 = normalize_price_to_e8(update.price as i128, update.exponent)?;
+    let conf_e8 = normalize_conf_to_e8(update.conf as i128, update.exponent)?;
 
     // step 8: conf_e8 * 10_000 / price_e8 <= CONF_MAX_RATIO_BPS
     let ratio_bps = confidence_ratio_bps(price_e8, conf_e8)?;
