@@ -61,6 +61,31 @@ pub fn create_event(
         SolclashError::ResolutionGapTooShort
     );
 
+    // (1) Arithmetic correctness — defense in depth, independent of any
+    // policy horizon: the timeout backstop must be COMPUTABLE. Both
+    // mark_refundable and resolve_event evaluate
+    // `resolution_time + RESOLUTION_TIMEOUT_SECS`; if that overflows i64,
+    // mark_refundable errors forever and the Locked event can never reach
+    // a terminal state — its funds lock permanently (security review F1,
+    // 2026-08-30). Reject a resolution_time whose own backstop can't be
+    // computed. This holds no matter what MAX_EVENT_HORIZON_SECS becomes.
+    resolution_time
+        .checked_add(RESOLUTION_TIMEOUT_SECS_DEV)
+        .ok_or(SolclashError::ResolutionTimeoutNotComputable)?;
+
+    // (2) Product policy — a distinct concern from (1): an event that
+    // resolves in the year 300-million passes the overflow guard yet is
+    // useless, and immobilizes rent + stake for a horizon no one will see
+    // end. Cap the horizon relative to `now` (not an absolute instant, so
+    // the bound doesn't age).
+    let max_resolution_time = now
+        .checked_add(MAX_EVENT_HORIZON_SECS_DEV)
+        .ok_or(SolclashError::MathOverflow)?;
+    require!(
+        resolution_time <= max_resolution_time,
+        SolclashError::EventHorizonTooFar
+    );
+
     let event = &mut ctx.accounts.event;
     event.creator = ctx.accounts.creator.key();
     event.event_id = event_id;

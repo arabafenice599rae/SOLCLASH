@@ -45,9 +45,10 @@ di ciascuno:
 | `MAX_STAKE_LAMPORTS_DEV` | 1_000_000_000_000 (1.000 SOL) | Tetto di sicurezza arbitrario, nessun razionale economico dato dalla spec |
 | `MAX_POT_LAMPORTS_DEV` | 10_000_000_000_000_000 (10.000.000 SOL) | Scelto per restare lontano da overflow `u64`/`u128`, non per un limite economico specifico |
 | `FEE_WALLET_DEV` | Indirizzo del System Program | Placeholder sintatticamente valido e pubblicamente noto, esplicitamente NON un vero fee wallet. L'utente ha chiesto esplicitamente di non essere interpellato su questo valore in questa fase |
-| `MIN_RESOLUTION_GAP_SECS_DEV` | 300s | Scelto solo per essere comodamente maggiore di `PUBLISH_WINDOW_SECS` (60s) |
-| `RESOLUTION_CHALLENGE_SECS_DEV` | 300s | Nessun razionale dato dalla spec |
-| `RESOLUTION_TIMEOUT_SECS_DEV` | 7 giorni | La spec dice solo "giorni" |
+| `MIN_RESOLUTION_GAP_SECS_DEV` | 300s | 5 minuti, scelto senza un razionale specifico dalla spec |
+| `MAX_EVENT_HORIZON_SECS_DEV` | 30 giorni | Policy di prodotto (2026-08-30, utente): il prodotto è una fabbrica di micro-eventi; un mese copre ogni caso legittimo e tiene il lockup peggiore a 37 giorni (30 + RESOLUTION_TIMEOUT 7). Da confermare col posizionamento del prodotto |
+| `MAX_RESOLUTION_STALENESS_SECS_DEV` | 120s | Pyth aggiorna ~1/s; un buco di 2 minuti a `resolution_time` è un'outage reale, non jitter → esito AMBIGUO |
+| `RESOLUTION_TIMEOUT_SECS_DEV` | 7 giorni | La spec dice solo "giorni". È anche il limite superiore della finestra di risoluzione (B-2) |
 | `CONF_MAX_RATIO_BPS_DEV` | 500 bps (5%) | Nessun razionale dato dalla spec |
 | `FEED_WHITELIST_DEV` | `[0u8;32]`, `[1u8;32]`, `[2u8;32]` | Nessun accesso verificato ai feed id reali di Pyth in questo ambiente (rete bloccata) — vedi `docs/pyth-reference.md` §7 |
 
@@ -223,6 +224,51 @@ dello stesso feed, verificando che `update_2.prev_publish_time ==
 update_1.publish_time`.** Se questa proprietà non regge in pratica, la
 canonicità non è garantita e il disegno a sfida va ripristinato — questa è
 la condizione esplicita a cui è appesa la rimozione della sfida.
+
+## F1 (terza passata): tetto su `resolution_time`, due controlli distinti
+
+Il terzo round di security review ha trovato un lockup permanente in
+versione *aritmetica* dello stesso pattern che ci accompagna: il backstop
+di timeout (`mark_refundable`) esiste **solo** per garantire che ogni
+evento `Locked` restituisca i fondi, e un `resolution_time` estremo lo
+annullava in silenzio. Se `resolution_time` è entro
+`RESOLUTION_TIMEOUT_SECS_DEV` da `i64::MAX`, il
+`resolution_time.checked_add(RESOLUTION_TIMEOUT_SECS_DEV)` va in overflow:
+`mark_refundable` restituisce `MathOverflow` per sempre, `resolve_event`
+fallisce prima con `ResolveTooEarly`, e l'evento non raggiunge mai un
+terminale. `create_event` non aveva alcun tetto superiore su
+`resolution_time`.
+
+Su indicazione dell'utente sono stati aggiunti **due** controlli, non uno,
+perché rispondono a problemi diversi:
+
+1. **Correttezza aritmetica** (difesa in profondità, come `overflow-checks`):
+   `resolution_time.checked_add(RESOLUTION_TIMEOUT_SECS_DEV).ok_or(
+   ResolutionTimeoutNotComputable)?`. Rende l'overflow impossibile
+   indipendentemente da quale valore assuma il tetto di prodotto domani.
+2. **Policy di prodotto**: `resolution_time <= now +
+   MAX_EVENT_HORIZON_SECS_DEV` (`EventHorizonTooFar`). La sola (1) lascia
+   passare assurdità: un mercato che si risolve nell'anno 300 milioni
+   supera la guardia di overflow e immobilizza rent e stake per un tempo
+   che nessuno vedrà mai finire. Il tetto è calcolato su `now`, non in
+   assoluto, così non invecchia.
+
+Due error code distinti perché dicono cose diverse a chi legge il
+fallimento: "questo numero è nonsense" vs "questo mercato è troppo lontano
+per la nostra policy". Test E32. Valore del tetto: 30 giorni dev (vedi
+tabella `_DEV`).
+
+## Chiusura delle revisioni di sicurezza (Fase 1)
+
+Su decisione dell'utente, le revisioni di sicurezza su questa bozza si
+fermano dopo quattro passate. Il razionale: quattro letture su codice mai
+compilato hanno dato quello che potevano — i finding trovati (chiusura dei
+`BetEntry` perdenti, free option su `cancel_bet`, race resolve/refund,
+finestra di selezione del candidato, e questo F1) sono stati tutti
+corretti; il prossimo finding utile arriva dal primo `cargo build` reale
+(Fase 0/1 in locale), non da una quinta lettura. Una nuova passata è
+prevista a fine Fase 3, quando l'oracolo reale cambia di nuovo la forma del
+codice.
 
 ## Normalizzazione di `conf`: ceiling, in deviazione dallo step 7 della spec
 

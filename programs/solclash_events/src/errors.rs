@@ -26,6 +26,10 @@ pub enum SolclashError {
     BettingCloseNotInFuture,
     #[msg("resolution_time must be >= betting_close_time + MIN_RESOLUTION_GAP_SECS")]
     ResolutionGapTooShort,
+    #[msg("resolution_time + RESOLUTION_TIMEOUT_SECS overflows i64: the timeout backstop would be uncomputable")]
+    ResolutionTimeoutNotComputable,
+    #[msg("resolution_time is beyond now + MAX_EVENT_HORIZON_SECS")]
+    EventHorizonTooFar,
 
     // ---- place_bet ----
     #[msg("event is not OPEN")]

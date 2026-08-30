@@ -56,6 +56,17 @@ pub const RESOLVER_REWARD_DEV: u64 = 1_820_000 + 2 * 5_000; // 1,830,000 lamport
 /// value: 300s (5 minutes). TBD.
 pub const MIN_RESOLUTION_GAP_SECS_DEV: i64 = 300;
 
+/// Maximum horizon of an event: `resolution_time` may be at most
+/// `now + MAX_EVENT_HORIZON_SECS` at creation (a product policy, distinct
+/// from the arithmetic overflow guard — see `create_event`). Dev value:
+/// 30 days. Rationale: this program is a micro-event factory (horizons of
+/// minutes to hours); a month covers any legitimate case ("BTC above X by
+/// month end" is already the plausible ceiling) and keeps the worst-case
+/// lockup — 30 days + RESOLUTION_TIMEOUT (7 days) = 37 days — within a
+/// human timeframe. TBD: a positioning choice to confirm, not a
+/// measurement.
+pub const MAX_EVENT_HORIZON_SECS_DEV: i64 = 30 * 24 * 60 * 60;
+
 /// Maximum staleness of the canonical resolution update: the gap between
 /// `resolution_time` and the `publish_time` of the first Pyth update
 /// at-or-after it. Under the canonicity rule the resolving update is the
@@ -142,6 +153,7 @@ mod tests {
         assert_ne!(MAX_POT_LAMPORTS_DEV, 10_000_000_000_000_000);
         assert_ne!(RESOLVER_REWARD_DEV, 1_820_000 + 2 * 5_000);
         assert_ne!(MIN_RESOLUTION_GAP_SECS_DEV, 300);
+        assert_ne!(MAX_EVENT_HORIZON_SECS_DEV, 30 * 24 * 60 * 60);
         assert_ne!(MAX_RESOLUTION_STALENESS_SECS_DEV, 120);
         assert_ne!(RESOLUTION_TIMEOUT_SECS_DEV, 7 * 24 * 60 * 60);
         assert_ne!(CONF_MAX_RATIO_BPS_DEV, 500);

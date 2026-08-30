@@ -35,6 +35,7 @@
 | E29 | **Finestra di risoluzione chiusa** (B-2): `resolve_event` dopo `resolution_time + RESOLUTION_TIMEOUT_SECS` | Fallisce con `ResolutionWindowClosed` (solo `mark_refundable` resta possibile) |
 | E30 | **Confine di canonicità**: `publish_time == resolution_time` (con `prev_publish_time < resolution_time`) | **RIESCE** — l'update esattamente a T è quello canonico (`<=` sul lato superiore) |
 | E31 | **Update stantìo**: canonico ma `publish_time - resolution_time > MAX_RESOLUTION_STALENESS_SECS` (buco del feed a T) | AMBIGUO → REFUNDABLE, reward pagato (non un errore) |
+| E32 | **Orizzonte di `resolution_time`** (F1): (a) `create_event` con `resolution_time` prossimo a `i64::MAX` (backstop incalcolabile); (b) `create_event` con `resolution_time` oltre `now + MAX_EVENT_HORIZON_SECS` | (a) Fallisce con `ResolutionTimeoutNotComputable`; (b) fallisce con `EventHorizonTooFar` — due codici distinti |
 
 I test da E20 a E25 della spec (resolver grinding, sfida con `publish_time`
 minore/uguale, sfida dopo `finalized_at`, sfida→ambiguo, `claim` prima di
