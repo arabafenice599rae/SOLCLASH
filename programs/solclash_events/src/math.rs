@@ -1,5 +1,11 @@
 // STATUS: NEVER COMPILED — draft written without a
 // toolchain. Fase 0 not performed. Nothing here is verified.
+// PARTIAL UPDATE 2026-08-30: this file's logic HAS now been compiled and
+// its 14 inline tests pass (plus 2 cross-checks against the Python-built
+// fixtures) via the dependency-free harness in tools/math-harness, which
+// stubs SolclashError. The anchor-lang integration (real errors.rs,
+// #[error_code] + PartialEq) remains unverified; the header above still
+// holds for the crate as a whole.
 
 //! Pure functions only: e8 fixed-point normalization, confidence-band
 //! outcome resolution, and pari-mutuel payout/refund arithmetic. Nothing
