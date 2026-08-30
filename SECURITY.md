@@ -207,7 +207,10 @@ fine Fase 1 un prerequisito di freeze esplicito — vedi `DEPLOY.md`.
   `FEED_WHITELIST` sono tutti placeholder non derivati da dati reali (vedi
   `constants.rs` e `DEVIATIONS.md`). Un deploy mainnet con questi valori
   sarebbe uno deploy con parametri economici e di sicurezza non
-  ragionati — bloccato esplicitamente dal test `mainnet_constants_are_frozen`.
+  ragionati — **bloccato a compile time** dalla guardia
+  `#[cfg(feature = "mainnet")] const _` in `constants.rs` (un build mainnet
+  con un placeholder non compila; un `#[test]` non basterebbe perché
+  `anchor build` non esegue i test).
 - **`oracle-mock` è l'unico percorso implementato.** Il percorso reale verso
   `PriceUpdateV2` (Fase 3) non esiste ancora; l'intero programma, così com'è,
   non può leggere un prezzo Pyth vero.

@@ -150,7 +150,12 @@ pub fn resolve_event(ctx: Context<ResolveEvent>) -> Result<()> {
     // Escrow checkpoint on the final resting state: after the fee and
     // reward have left, the PDA holds exactly `rent + payout_pool`, so the
     // `>=` (never `==`, I7) invariant holds with any pre-funded dust as
-    // slack.
+    // slack. This runs AFTER the two transfers — a motivated exception to
+    // the "check before any lamport movement" rule — and is safe ONLY
+    // because `transfer_from_pda` subtracts with `checked_sub`
+    // (instructions/mod.rs): an underfunded PDA fails with MathOverflow at
+    // the transfer, so this later check can never be reached on a bad
+    // balance. See DEVIATIONS.md point E.
     let lamports = event.to_account_info().lamports();
     require!(
         lamports

@@ -44,7 +44,7 @@ di ciascuno:
 | `MIN_STAKE_LAMPORTS_DEV` | 18_300_000 lamport | 10× `RESOLVER_REWARD_DEV`, per soddisfare ">> RESOLVER_REWARD" senza un margine specifico dato dalla spec |
 | `MAX_STAKE_LAMPORTS_DEV` | 1_000_000_000_000 (1.000 SOL) | Tetto di sicurezza arbitrario, nessun razionale economico dato dalla spec |
 | `MAX_POT_LAMPORTS_DEV` | 10_000_000_000_000_000 (10.000.000 SOL) | Scelto per restare lontano da overflow `u64`/`u128`, non per un limite economico specifico |
-| `FEE_WALLET_DEV` | Indirizzo del System Program | Placeholder sintatticamente valido e pubblicamente noto, esplicitamente NON un vero fee wallet. L'utente ha chiesto esplicitamente di non essere interpellato su questo valore in questa fase |
+| `FEE_WALLET_DEV` | `*b"SOLCLASH-DEV-FEE-DO-NOT-SEND!!!!"` (32 byte ASCII) | Placeholder valido e leggibile, esplicitamente NON un vero fee wallet e — deliberatamente — NON il System Program (che è eseguibile: un trasferimento verso di esso non si comporta come verso un wallet). Vedi la sezione "Tre bug di `constants.rs`" sotto per perché il vecchio placeholder era rotto |
 | `MIN_RESOLUTION_GAP_SECS_DEV` | 300s | 5 minuti, scelto senza un razionale specifico dalla spec |
 | `MAX_EVENT_HORIZON_SECS_DEV` | 30 giorni | Policy di prodotto (2026-08-30, utente): il prodotto è una fabbrica di micro-eventi; un mese copre ogni caso legittimo e tiene il lockup peggiore a 37 giorni (30 + RESOLUTION_TIMEOUT 7). Da confermare col posizionamento del prodotto |
 | `MAX_RESOLUTION_STALENESS_SECS_DEV` | 120s | Pyth aggiorna ~1/s; un buco di 2 minuti a `resolution_time` è un'outage reale, non jitter → esito AMBIGUO |
@@ -257,6 +257,55 @@ Due error code distinti perché dicono cose diverse a chi legge il
 fallimento: "questo numero è nonsense" vs "questo mercato è troppo lontano
 per la nostra policy". Test E32. Valore del tetto: 30 giorni dev (vedi
 tabella `_DEV`).
+
+## Tre bug di `constants.rs` (revisione 2026-08-30)
+
+Il file che sembrava il più innocuo conteneva i due unici bug capaci di
+rompere la build o vanificare una protezione, più due allineamenti minori.
+
+- **A — `FEE_WALLET_DEV` non era un `Pubkey` valido.** Il placeholder
+  `pubkey!("111...1")` aveva **41** caratteri `1`; in base58 un `1` è uno
+  zero-byte iniziale, quindi 41 caratteri decodificano a **41 byte**, non
+  32. `pubkey!` è una macro const → fallimento a **compile time**, il primo
+  errore al primo `cargo build`. Corretto usando un valore a 32 byte
+  costruito da un marker ASCII leggibile
+  (`*b"SOLCLASH-DEV-FEE-DO-NOT-SEND!!!!"`, verificato lungo 32 byte) via
+  `Pubkey::new_from_array`, e — su segnalazione ripetuta dell'utente —
+  **non** il System Program, che è un account eseguibile verso cui un
+  trasferimento di lamport non si comporta come verso un normale wallet (il
+  primo `resolve_event` con esito definito sarebbe fallito in modo confuso).
+- **B — la guardia sulle costanti non guardava niente.** Era un `#[test]`
+  (`mainnet_constants_are_frozen`), e `anchor build --features mainnet`
+  **non esegue i test**: si poteva compilare e deployare con tutti i
+  placeholder al loro posto. Sostituita con una guardia **compile-time**
+  `#[cfg(feature = "mainnet")] const _: () = { assert!(...) };`, lo stesso
+  meccanismo della guardia `oracle-mock`/`compile_error!` già in casa. Per
+  le costanti numeriche l'asserzione const è diretta; per `FEE_WALLET_DEV`
+  e `FEED_WHITELIST_DEV` confronta i byte grezzi `[u8; 32]` via una
+  `const fn bytes32_eq` (il `PartialEq` di `Pubkey` non è const). Questo era
+  il finding più serio dei due: A si presenta subito e rumoroso, B restava
+  silenzioso fino al momento peggiore.
+- **C — la whitelist passava anche sostituendo un feed su tre.** Il vecchio
+  guard confrontava l'array intero (`FEED_WHITELIST_DEV != [[0;32],[1;32],
+  [2;32]]`): con SOL/USD reale e BTC/ETH placeholder l'assert passava. Ora
+  il controllo è **per elemento** (`bytes32_eq` su ciascuno dei tre).
+  Principio generale, applicabile al codice futuro: ogni guardia su un
+  insieme va scritta sull'elemento, non sull'insieme.
+- **D (minore) — doc e test di `MIN_STAKE` non concordavano.** Il doc
+  diceva 10×, il test asseriva `> RESOLVER_REWARD * 5`. Allineati sullo
+  stesso numero (10×, `>= RESOLVER_REWARD_DEV * 10`), col valore invariato.
+  Annotato che a due bettor il reward è ~5% del pot e che la Fase 3 può
+  alzare il multiplo (50× lo porterebbe sotto l'1%) quando `RESOLVER_REWARD`
+  verrà rimisurato.
+- **E (verifica, non un bug) — collocazione del checkpoint di escrow in
+  `resolve_event`.** Il check è **dopo** i due trasferimenti (fee, reward),
+  in deviazione dalla regola "prima di ogni movimento di lamport". È
+  difendibile perché verifica lo stato terminale di riposo, che è ciò che
+  conta, e regge **perché `transfer_from_pda` usa `checked_sub`**
+  (`instructions/mod.rs:33-35`): un PDA sotto-finanziato fallirebbe con
+  `MathOverflow` alla sottrazione, prima che il check tardivo sia
+  raggiunto. Registrato come eccezione motivata alla regola, non un
+  problema.
 
 ## Chiusura delle revisioni di sicurezza (Fase 1)
 

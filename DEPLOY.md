@@ -22,8 +22,11 @@
   ETH/USD verificati dalla fonte Pyth ufficiale (non ancora fatto — vedi
   `docs/pyth-reference.md` §7 e `DEVIATIONS.md`).
 - Tutte le costanti `_DEV` in `constants.rs` sostituite con valori reali,
-  ragionati, e congelati sotto la feature `mainnet` (il test
-  `mainnet_constants_are_frozen` deve passare).
+  ragionati. Il freeze è enforced a **compile time** dalla guardia
+  `#[cfg(feature = "mainnet")] const _` in `constants.rs`: un build mainnet
+  con anche un solo placeholder ancora al suo posto **non compila**. (Non
+  è più un `#[test]`: `anchor build --features mainnet` non esegue i test,
+  quindi un guard basato su test non impediva nulla — corretto 2026-08-30.)
 - **Lista degli error code riconciliata contro `errors.rs`** — una volta
   sola, a fine Fase 1, prima di qualunque freeze documentale. `errors.rs`
   è la fonte di verità; la lista della spec originale è già divergita in
@@ -104,7 +107,7 @@ multisig (soglia, membri) — vedi `DEVIATIONS.md`.
 
 Il programma deve invocare, in tutto il suo ciclo di vita, **solo**:
 
-- **System Program** (`11111111111111111111111111111111111111111`) — per
+- **System Program** (`11111111111111111111111111111111`, 32 caratteri) — per
   `create_account` (via i vincoli `init` di Anchor) e per il trasferimento
   di stake in `place_bet` (`system_program::transfer`, l'unico
   trasferimento in entrata che passa per una CPI esplicita — ogni altro
@@ -129,7 +132,8 @@ nuova CPI compaia fuori da questi due programmi.
 2. Fase 1-2 completate e verdi in questo repository (bozza attuale, mai
    compilata) diventano codice reale, compilato, testato.
 3. Fase 3: `oracle.rs` reale, fixture da devnet, feed id reali.
-4. Costanti `_DEV` sostituite, `mainnet_constants_are_frozen` verde.
+4. Costanti `_DEV` sostituite (la guardia compile-time `const _` sotto
+   `mainnet` compila senza errori).
 5. Deploy su devnet sotto Squads v4, verifica end-to-end con Pyth reale su
    devnet.
 6. Deploy su mainnet-beta sotto Squads v4 con timelock.
