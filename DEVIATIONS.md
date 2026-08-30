@@ -194,6 +194,28 @@ specificare la direzione di arrotondamento. Ho usato lo stesso floor via
 intermedio `u128` usato ovunque altrove nel sistema (claim, refund), per
 coerenza interna — non un valore dato esplicitamente dalla spec.
 
+## Gap trovati confrontando `SECURITY.md` con `solana-dev-skill/references/security.md`
+
+Vedi `docs/toolchain-notes.md` §4 per il confronto completo, voce per
+voce, con la checklist di sicurezza generica di `solana-dev-skill`. Due
+punti concreti, non coperti da un test dedicato in questa bozza:
+
+- **Lamport griefing sull'`init` di `Event`**: nessun test Fase-2 previsto
+  per "creare un `Event` la cui PDA ha già ricevuto dust prima di
+  `create_event`". Il vincolo `init` di Anchor dovrebbe gestirlo
+  internamente (trasferisce solo il deficit, non l'intero rent-exempt
+  minimum), ma non è un comportamento che questa bozza verifica
+  esplicitamente. Da aggiungere alla lista di test della Fase 2 quando un
+  toolchain esiste.
+- **`overflow-checks = true` nel `Cargo.toml` di workspace**: alcune
+  versioni di Anchor (0.30, per `common-errors.md:310-319` del
+  `solana-dev-skill`) lo richiedono esplicitamente nel `[profile.release]`
+  del workspace, altrimenti il build fallisce. Questa bozza non ha un
+  `Cargo.toml` (per istruzione esplicita dell'utente), quindi non è
+  ancora verificabile se Anchor 1.x lo richieda ancora esplicitamente o se
+  sia ormai un default — promemoria per quando il `Cargo.toml` reale verrà
+  scritto in Fase 0.
+
 ## Layout byte di `PriceUpdateV2` — dipendenza dalla variante di `verification_level`
 
 Vedi `docs/pyth-reference.md` §1.1: la spec descrive il layout come "134
