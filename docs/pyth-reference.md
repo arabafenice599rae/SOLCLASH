@@ -246,6 +246,12 @@ questo commit. Il crate stesso è alla versione `2.0.0`
 (`target_chains/solana/pyth_solana_receiver_sdk/Cargo.toml:3`, non
 riportato sopra ma letto dallo stesso file).
 
+> **Confermato in Fase 0** contro l'indice di crates.io: la 2.0.0 pubblicata
+> richiede `anchor-lang ^1.0.2`, compatibile con la 1.1.2 che questo
+> workspace usa. È l'unica linea che lo fa: la 1.2.0 e precedenti pinnano
+> `anchor-lang ^0.32.1`, e le 0.6.x `>=0.28.0` con `solana-program 1.x`.
+> Vedi `TOOLCHAIN.md`.
+
 ---
 
 ## 5. Discriminator Anchor di `PriceUpdateV2`

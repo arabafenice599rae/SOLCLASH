@@ -1,5 +1,7 @@
-// STATUS: NEVER COMPILED — draft written without a
-// toolchain. Fase 0 not performed. Nothing here is verified.
+// STATUS: compiles, and `cargo test` is green — Fase 0 has been performed,
+// see TOOLCHAIN.md. Still NEVER DEPLOYED and never audited: no on-chain
+// test exercises any instruction (Fase 2), the Pyth path is still the
+// mock (Fase 3), and every `_DEV` constant is a placeholder.
 
 //! One dedicated variant per `require!` in the program. No shared/generic
 //! error codes: every failure mode gets its own name so a transaction log
@@ -7,13 +9,10 @@
 
 use anchor_lang::prelude::*;
 
-// ASSUMPTION (unverified — see DEVIATIONS.md): stacking `#[derive(PartialEq,
-// Eq)]` above `#[error_code]` is assumed legal and sufficient to make
-// `SolclashError` comparable with `assert_eq!`/`==` in math.rs's pure unit
-// tests. anchor-lang's source was not available to confirm what
-// `#[error_code]` derives on its own; if it already derives `PartialEq`,
-// this is redundant and harmless, if it conflicts, Fase 0 will surface it
-// immediately as a compile error and this attribute should be dropped.
+// VERIFIED in Fase 0 (anchor-lang 1.1.2): `#[error_code]` preserves derives
+// stacked above it, and does not add `PartialEq` itself, so this attribute
+// is what makes `SolclashError` comparable with `assert_eq!`/`==` in
+// math.rs's pure unit tests. Dropping it breaks those tests.
 #[derive(PartialEq, Eq)]
 #[error_code]
 pub enum SolclashError {

@@ -1,23 +1,24 @@
 # Deploy — SOLCLASH-EVENTS
 
 > **Stato:** questo documento descrive il *piano* di deploy dalla spec.
-> Nessun deploy è mai avvenuto: non esiste ancora un `Cargo.toml`, un
-> build funzionante, né un program ID reale. `declare_id!` in `lib.rs`
-> contiene un placeholder esplicitamente marcato, non un indirizzo
-> deployabile. Segui questo documento solo dopo che le Fasi 0-3 sono
-> concluse e verdi.
+> Nessun deploy è mai avvenuto. Il build ora esiste ed è funzionante
+> (Fase 0, vedi `TOOLCHAIN.md`), ma `declare_id!` in `lib.rs` contiene
+> ancora un placeholder esplicitamente marcato, non un indirizzo
+> deployabile, e nessun test on-chain esercita il programma. Segui questo
+> documento solo dopo che le Fasi 2-3 sono concluse e verdi.
 
-## Prerequisiti (Fase 0, non ancora eseguita in questo ambiente)
+## Prerequisiti
 
-- Toolchain risolto e congelato in `TOOLCHAIN.md` — **non presente in
-  questo branch**: l'utente ha indicato di eseguire la Fase 0 in locale,
-  non in questo ambiente (nessun accesso a crates.io/npmjs.org/Solana CLI
-  qui). Non generare `TOOLCHAIN.md` finché quella fase non è stata
-  effettivamente eseguita e verificata.
+- ~~Toolchain risolto e congelato in `TOOLCHAIN.md`.~~ **Fatto**: vedi
+  [`TOOLCHAIN.md`](TOOLCHAIN.md). Il programma compila, `cargo test` è
+  verde e `anchor build` produce un `.so` che il loader accetta.
 - Program ID reale, generato con `solana-keygen new`, sincronizzato nel
-  codice con `anchor keys sync`. Il placeholder attuale in `lib.rs` non ha
-  una chiave privata associata (è un hash, non una keypair) — va sostituito
-  interamente, non riusato.
+  codice con `anchor keys sync`. **Non ancora fatto, di proposito**: il
+  placeholder attuale in `lib.rs` non ha una chiave privata associata (è un
+  hash, non una keypair) e va sostituito interamente, non riusato. È il
+  primo passo obbligato non solo del deploy ma già della Fase 2: un
+  programma deployato con questo disallineamento rifiuta ogni istruzione
+  con `DeclaredProgramIdMismatch`.
 - `FEED_WHITELIST` popolato con i feed id reali di SOL/USD, BTC/USD,
   ETH/USD verificati dalla fonte Pyth ufficiale (non ancora fatto — vedi
   `docs/pyth-reference.md` §7 e `DEVIATIONS.md`).
@@ -106,10 +107,12 @@ nuova CPI compaia fuori da questi due programmi.
 
 ## Ordine di deploy (riassunto)
 
-1. Fase 0 (locale, utente) → `TOOLCHAIN.md` reale.
-2. Fase 1-2 completate e verdi in questo repository (bozza attuale, mai
-   compilata) diventano codice reale, compilato, testato.
-3. Fase 3: `oracle.rs` reale, fixture da devnet, feed id reali.
+1. ~~Fase 0 → `TOOLCHAIN.md` reale.~~ Fatto.
+2. Fase 2: program id vero (`anchor keys sync`), poi i test on-chain che
+   esercitino le 11 istruzioni. La Fase 1 compila ed è verde sull'aritmetica
+   pura, ma nessuna delle invarianti di `SECURITY.md` è ancora eseguita.
+3. Fase 3: `oracle.rs` reale (`pyth-solana-receiver-sdk 2.0.0`), fixture da
+   devnet, feed id reali.
 4. Costanti `_DEV` sostituite, `mainnet_constants_are_frozen` verde.
 5. Deploy su devnet sotto Squads v4, verifica end-to-end con Pyth reale su
    devnet.

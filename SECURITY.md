@@ -1,12 +1,12 @@
 # Sicurezza — SOLCLASH-EVENTS
 
 > **Stato di questo documento:** descrive il modello di sicurezza del
-> *disegno* del programma (Fase 1, bozza mai compilata — vedi
-> `programs/solclash_events/src/lib.rs`). Nessuna riga di codice qui
-> descritta è stata verificata da un compilatore, un test, o un audit.
-> Non è un attestato di sicurezza, è la specifica delle invarianti che il
-> codice deve rispettare quando la Fase 0 (toolchain) sarà completata e la
-> Fase 2 (test) sarà verde.
+> *disegno* del programma. Il codice ora compila e `cargo test` è verde
+> (Fase 0 — vedi `TOOLCHAIN.md`), ma questo verifica soltanto l'aritmetica
+> pura di `math.rs` contro i vettori di `tests/fixtures/`: **nessuna delle
+> invarianti I1-I13 elencate qui sotto è eseguita da un test**, perché
+> nessun test on-chain esiste ancora (Fase 2). Non è un attestato di
+> sicurezza, è la specifica delle invarianti che il codice deve rispettare.
 
 ## Modello di trust
 
@@ -117,9 +117,12 @@ citati con `cargo doc`-style link.
 - **`oracle-mock` è l'unico percorso implementato.** Il percorso reale verso
   `PriceUpdateV2` (Fase 3) non esiste ancora; l'intero programma, così com'è,
   non può leggere un prezzo Pyth vero.
-- **Nessun toolchain ha mai compilato questo codice.** Ogni dettaglio di
-  API Anchor (nomi di metodi, forma dei vincoli, versione delle macro) è
-  un'assunzione dichiarata nei commenti del codice, non un fatto verificato.
+- **Nessuna invariante di questo documento è eseguita da un test.** Le
+  API Anchor usate dal codice sono ora verificate (compila contro
+  anchor-lang 1.1.2), ma compilare non dice nulla su I1-I13: quelle
+  richiedono i test on-chain della Fase 2. Anche `Event::SPACE` e
+  `BetEntry::SPACE` restano calcolate a mano e mai confrontate con la
+  dimensione borsh reale.
 
 ## Segnalazione di vulnerabilità
 

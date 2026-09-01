@@ -1,5 +1,7 @@
-// STATUS: NEVER COMPILED — draft written without a
-// toolchain. Fase 0 not performed. Nothing here is verified.
+// STATUS: compiles, and `cargo test` is green — Fase 0 has been performed,
+// see TOOLCHAIN.md. Still NEVER DEPLOYED and never audited: no on-chain
+// test exercises any instruction (Fase 2), the Pyth path is still the
+// mock (Fase 3), and every `_DEV` constant is a placeholder.
 
 //! `create_event`, `place_bet`, `cancel_bet`, `lock_event` — everything
 //! before an event enters resolution. All four are permissionless except
@@ -81,10 +83,9 @@ pub fn create_event(
     event.finalized_at = 0;
     event.payout_pool = 0;
     event.bets_closed = 0;
-    // ASSUMPTION (unverified): `ctx.bumps.event` is Anchor 1.x's accessor
-    // for the canonical bump of a PDA named `event` in this `Accounts`
-    // struct. This is the modern (post-0.29) Anchor pattern; Fase 0 will
-    // confirm or correct it immediately as a compile error if wrong.
+    // VERIFIED in Fase 0: `ctx.bumps.event` is anchor-lang 1.1.2's accessor
+    // for the canonical bump of the PDA named `event` in this `Accounts`
+    // struct (the post-0.29 pattern).
     event.bump = ctx.bumps.event;
 
     Ok(())

@@ -1,22 +1,95 @@
-name: Rust
+name: CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 env:
   CARGO_TERM_COLOR: always
+  # Pins verified in TOOLCHAIN.md. Keep the two in sync.
+  ANCHOR_VERSION: 1.1.2
+  NODE_VERSION: 22
 
 jobs:
-  build:
-
+  # Everything that needs neither the SBF toolchain nor a validator. Fast,
+  # so it is what tells you a change is broken.
+  rust:
+    name: rustfmt, clippy, build, test
     runs-on: ubuntu-latest
-
     steps:
-    - uses: actions/checkout@v4
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        run: rustup component add rustfmt clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Build
+        run: cargo build --verbose
+
+      # 17 unit tests plus the four that replay tests/fixtures/*.json
+      # through math.rs.
+      - name: Test
+        run: cargo test --verbose
+
+      # The fixtures are only trustworthy if their stated provenance holds:
+      # regenerating them must not change a byte.
+      - name: Fixtures are reproducible
+        run: |
+          python3 tests/fixtures/generate_fixtures.py
+          git diff --exit-code -- tests/fixtures/
+
+  # The SBF build and everything downstream of it (IDL, TypeScript).
+  # Slower, and needs the Solana + Anchor toolchains.
+  anchor:
+    name: anchor build + IDL checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: yarn
+
+      - name: Install Solana CLI
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/stable/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> "$GITHUB_PATH"
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Anchor via AVM
+        run: |
+          cargo install --git https://github.com/coral-xyz/anchor avm --locked --force
+          avm install "$ANCHOR_VERSION"
+          avm use "$ANCHOR_VERSION"
+          echo "$HOME/.avm/bin" >> "$GITHUB_PATH"
+
+      # --ignore-keys: declare_id! holds a placeholder with no keypair, on
+      # purpose (see TOOLCHAIN.md), so the generated keypair never matches
+      # it and the check would fail the build for a known, intended state.
+      - name: anchor build
+        run: anchor build --ignore-keys
+
+      - name: Install Node dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Typecheck
+        run: yarn typecheck
+
+      - name: Prettier
+        run: yarn lint
+
+      # Asserts the generated IDL still describes the program the Rust
+      # source declares: same id, same instructions, same error codes.
+      - name: IDL matches the Rust source
+        run: yarn test

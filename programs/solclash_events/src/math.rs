@@ -1,5 +1,7 @@
-// STATUS: NEVER COMPILED — draft written without a
-// toolchain. Fase 0 not performed. Nothing here is verified.
+// STATUS: compiles, and `cargo test` is green — Fase 0 has been performed,
+// see TOOLCHAIN.md. Still NEVER DEPLOYED and never audited: no on-chain
+// test exercises any instruction (Fase 2), the Pyth path is still the
+// mock (Fase 3), and every `_DEV` constant is a placeholder.
 
 //! Pure functions only: e8 fixed-point normalization, confidence-band
 //! outcome resolution, and pari-mutuel payout/refund arithmetic. Nothing

@@ -1,23 +1,30 @@
 # Deviazioni e ambiguità
 
-Ogni punto sotto è una decisione presa da questa bozza dove la spec non
-specificava un valore o un comportamento, o era ambigua. Nessuno di questi
-punti è stato verificato compilando o testando il codice — sono decisioni
-di disegno, da rivedere quando la Fase 0 sarà completata.
+Ogni punto sotto è una decisione presa dove la spec non specificava un
+valore o un comportamento, o era ambigua. Sono decisioni di disegno: la
+Fase 0 (vedi `TOOLCHAIN.md`) ne ha verificato la *compilabilità*, non la
+correttezza — quella richiede i test on-chain della Fase 2.
 
 ## Ambiente di lavoro
 
-- **Nessun accesso di rete a crates.io, npmjs.org, o `mcp.solana.com` in
-  questo ambiente.** Confermato con probe diretti (Fase −1) e ri-confermato
-  con `--noproxy '*'` e `NO_PROXY` espliciti: entrambi gli host sono
-  elencati nella allowlist `noProxy` del proxy stesso ma restano comunque
-  bloccati a livello di policy di rete, con `403 host_not_allowed`. GitHub
-  è raggiungibile ed è stato usato per clonare `pyth-crosschain` (Task C).
-- Per istruzione esplicita dell'utente, questa bozza **non** installa nulla
-  da GitHub releases, **non** crea `TOOLCHAIN.md`, **non** dichiara
-  compatibilità con nessuna versione di Anchor/Solana, e **non** scrive un
-  `Cargo.toml` di progetto. La Fase 0 resta interamente demandata all'utente,
-  in locale.
+Queste due voci descrivevano l'ambiente in cui la bozza fu scritta e non
+valgono più; restano qui perché spiegano perché il codice aveva la forma
+che aveva.
+
+- ~~**Nessun accesso di rete a crates.io, npmjs.org, o `mcp.solana.com`.**
+  Confermato con probe diretti (Fase −1)... GitHub è raggiungibile ed è
+  stato usato per clonare `pyth-crosschain` (Task C).~~ Nell'ambiente della
+  Fase 0 crates.io, npmjs.org, `release.anza.xyz` e i download di release
+  di GitHub sono raggiungibili. Resta bloccata `api.github.com`, il che ha
+  un effetto concreto: `avm install` non riesce a verificare la *build
+  provenance* del binario Anchor precompilato e rifiuta di installarlo. È
+  stato compilato da sorgente (`--from-source`) invece di saltare il
+  controllo. Vedi `TOOLCHAIN.md`.
+- ~~Per istruzione esplicita dell'utente, questa bozza non installa nulla,
+  non crea `TOOLCHAIN.md`, non dichiara compatibilità con nessuna versione
+  di Anchor/Solana, e non scrive un `Cargo.toml`. La Fase 0 resta demandata
+  all'utente.~~ La Fase 0 è stata eseguita: i manifest esistono, le versioni
+  sono dichiarate e verificate in `TOOLCHAIN.md`.
 
 ## Program ID placeholder
 
@@ -27,8 +34,18 @@ indirizzo reale, ho generato `sha256("SOLCLASH_EVENTS_PLACEHOLDER_DO_NOT_DEPLOY_
 reinterpretato come Pubkey (nessuna chiave privata esiste per questo
 indirizzo — è un hash, non una keypair, generato offline con Python
 standard library, nessuna rete coinvolta). Va rigenerato per davvero con
-`solana-keygen new` + `anchor keys sync` in Fase 0, come annotato nel
-commento sopra `declare_id!` e in `DEPLOY.md`.
+`solana-keygen new` + `anchor keys sync`, come annotato nel commento sopra
+`declare_id!` e in `DEPLOY.md`.
+
+**Aggiornamento Fase 0:** il placeholder è stato deliberatamente *lasciato*
+dov'è. `anchor build` genera un keypair proprio in `target/deploy/` e
+segnala il disallineamento, ma la build va a termine. Sincronizzare
+scriverebbe nel repository un indirizzo la cui chiave privata vive solo in
+una `target/` non versionata: un id che nessun altro può firmare e che il
+repository lascerebbe intendere come proprio. Il placeholder dice la
+verità. Conseguenza da tenere presente: un programma deployato così
+rifiuta ogni istruzione con `DeclaredProgramIdMismatch`, quindi la Fase 2
+dovrà generare una chiave vera prima di qualunque test on-chain.
 
 ## Costanti `_DEV` (TBD)
 
@@ -49,7 +66,7 @@ di ciascuno:
 | `RESOLUTION_CHALLENGE_SECS_DEV` | 300s | Nessun razionale dato dalla spec |
 | `RESOLUTION_TIMEOUT_SECS_DEV` | 7 giorni | La spec dice solo "giorni" |
 | `CONF_MAX_RATIO_BPS_DEV` | 500 bps (5%) | Nessun razionale dato dalla spec |
-| `FEED_WHITELIST_DEV` | `[0u8;32]`, `[1u8;32]`, `[2u8;32]` | Nessun accesso verificato ai feed id reali di Pyth in questo ambiente (rete bloccata) — vedi `docs/pyth-reference.md` §7 |
+| `FEED_WHITELIST_DEV` | `[0u8;32]`, `[1u8;32]`, `[2u8;32]` | I feed id reali non sono stati ancora sourced dal registro pubblicato di Pyth: è lavoro di Fase 3, insieme al percorso `PriceUpdateV2` che li userebbe — vedi `docs/pyth-reference.md` §7 |
 
 `PROTOCOL_FEE_BPS` (1.000, dato dalla spec), `PUBLISH_WINDOW_SECS` (60, tetto
 dato dalla spec), e `PYTH_RECEIVER_PROGRAM` (dato dalla spec) **non** sono
@@ -156,25 +173,23 @@ Pyth Receiver, e la CPI al System Program resta l'unica, in `place_bet`).
 Non è dichiarato esplicitamente dalla spec, ma è lo standard idiomatico per
 un programma che sposta lamport dal proprio PDA.
 
-## Assunzioni API Anchor non verificabili in questo ambiente
+## Assunzioni API Anchor — esito della verifica (Fase 0)
 
-Nessuna di queste è stata confermata da un compilatore. Ognuna è annotata
-anche inline nel codice sorgente dove usata:
+Le quattro assunzioni che la bozza aveva dichiarato, ciascuna con l'esito
+del confronto con `anchor-lang 1.1.2`. Tre su quattro erano corrette.
 
-- `ctx.bumps.<nome_account>` come accessor del bump canonico di una PDA
-  (pattern Anchor moderno, post-0.29). Usato in `create_event` e `place_bet`.
-- Impilare `#[derive(PartialEq, Eq)]` sopra `#[error_code]` per rendere
-  `SolclashError` confrontabile con `==`/`assert_eq!` nei test puri di
-  `math.rs`. Non è stato possibile verificare cosa `#[error_code]` derivi
-  già di suo, perché il sorgente di `anchor-lang` non è disponibile in
-  questo ambiente (crates.io bloccato).
-- La forma esatta di `anchor_lang::system_program::{transfer, Transfer}`
-  per la CPI in `place_bet` — nome e shape assunti dal pattern comune
-  Anchor, non confermati contro il sorgente di `anchor-lang` 1.0.2.
-- Spazio degli account (`Event::SPACE`, `BetEntry::SPACE`) calcolato a
-  mano termine per termine, invece di usare un eventuale
-  `#[derive(InitSpace)]`, la cui esistenza/forma in Anchor 1.x non è stata
-  verificata da questo ambiente.
+| Assunzione | Esito |
+|---|---|
+| `ctx.bumps.<nome_account>` come accessor del bump canonico di una PDA (pattern post-0.29), usato in `create_event` e `place_bet` | **Corretta.** |
+| `#[derive(PartialEq, Eq)]` impilato sopra `#[error_code]` per rendere `SolclashError` confrontabile con `==`/`assert_eq!` | **Corretta, e necessaria.** `#[error_code]` preserva i derive impilati e non aggiunge `PartialEq` di suo: togliere l'attributo rompe i test puri di `math.rs`. |
+| La forma di `anchor_lang::system_program::{transfer, Transfer}` per la CPI in `place_bet` | **Corretta sui nomi, sbagliata sulla firma.** `Transfer { from, to }` con due `AccountInfo` è giusto, ma `CpiContext::new` in 1.x prende il program **id** (`Pubkey`), non l'`AccountInfo` del System Program come in 0.x. Era l'unico errore di compilazione dell'intera bozza. |
+| `#[derive(InitSpace)]` di esistenza/forma incerta in Anchor 1.x, da cui il calcolo a mano di `Event::SPACE` e `BetEntry::SPACE` | **Il macro esiste** in anchor-lang 1.1.2. Il calcolo a mano è stato mantenuto lo stesso, ora come scelta e non come ripiego: la scomposizione termine per termine è verificabile riga per riga contro i campi della struct, un numero derivato da macro no. Resta però **non confrontato** con la dimensione borsh reale — vedi `TOOLCHAIN.md`. |
+
+Un quinto punto, non dichiarato dalla bozza ma emerso alla prima
+compilazione: il letterale di `FEE_WALLET_DEV` aveva 41 caratteri `'1'`
+dove l'indirizzo del System Program ne ha 32. `pubkey!` lo decodificava
+comunque al valore giusto (32 byte a zero), ma solo per la tolleranza del
+decoder base58 sugli zeri iniziali. Normalizzato alla forma canonica.
 
 ## Percorso reale Pyth (Fase 3) non ancora disegnato
 

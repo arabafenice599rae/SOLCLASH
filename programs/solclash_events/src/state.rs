@@ -1,5 +1,7 @@
-// STATUS: NEVER COMPILED — draft written without a
-// toolchain. Fase 0 not performed. Nothing here is verified.
+// STATUS: compiles, and `cargo test` is green — Fase 0 has been performed,
+// see TOOLCHAIN.md. Still NEVER DEPLOYED and never audited: no on-chain
+// test exercises any instruction (Fase 2), the Pyth path is still the
+// mock (Fase 3), and every `_DEV` constant is a placeholder.
 
 use anchor_lang::prelude::*;
 
@@ -71,11 +73,13 @@ pub struct Event {
 }
 
 impl Event {
-    /// Account space, computed by hand rather than via a possibly-absent
-    /// `#[derive(InitSpace)]` (unverified whether that macro exists in
-    /// this form in Anchor 1.x — anchor-lang's source was not available to
-    /// this draft). One term per field, in declaration order, so this stays
-    /// auditable against `Event`'s definition above:
+    /// Account space, computed by hand. `#[derive(InitSpace)]` does exist
+    /// in anchor-lang 1.1.2 (Fase 0 confirmed it), so the hand computation
+    /// is now a choice rather than a workaround: it is kept because the
+    /// breakdown below is auditable line by line against `Event`'s fields,
+    /// which a macro-derived number is not. NOT YET VERIFIED against the
+    /// real borsh size — see TOOLCHAIN.md. One term per field, in
+    /// declaration order:
     ///
     /// ```text
     ///   8  discriminator          8  pot
