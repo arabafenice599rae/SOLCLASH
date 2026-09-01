@@ -121,10 +121,9 @@ fn confidence_band_matches_fixture() {
         let expected: Option<u8> = match &case["expected_outcome"] {
             Value::Null => None,
             v => {
-                let n = v
-                    .as_u64()
-                    .unwrap_or_else(|| panic!("{name}: expected_outcome is neither null nor an integer"))
-                    as u8;
+                let n = v.as_u64().unwrap_or_else(|| {
+                    panic!("{name}: expected_outcome is neither null nor an integer")
+                }) as u8;
                 assert!(
                     n == OUTCOME_YES || n == OUTCOME_NO,
                     "{name}: expected_outcome {n} is not a valid outcome"
@@ -168,7 +167,10 @@ fn payout_matches_fixture() {
     // remainder is exactly what `close_event` sweeps.
     let total: u64 = actual.iter().copied().sum();
     assert_eq!(total, u64_at(&doc, "expected_total_paid"));
-    assert!(total <= payout_pool, "I11 violated: payouts exceed the pool");
+    assert!(
+        total <= payout_pool,
+        "I11 violated: payouts exceed the pool"
+    );
     assert_eq!(
         payout_pool - total,
         u64_at(&doc, "expected_remainder_swept_by_close_event")
@@ -207,7 +209,10 @@ fn refund_matches_fixture() {
 
     let total: u64 = actual.iter().copied().sum();
     assert_eq!(total, u64_at(&doc, "expected_total_paid"));
-    assert!(total <= payout_pool, "I11 violated: refunds exceed the pool");
+    assert!(
+        total <= payout_pool,
+        "I11 violated: refunds exceed the pool"
+    );
     assert_eq!(
         payout_pool - total,
         u64_at(&doc, "expected_remainder_swept_by_close_event")

@@ -111,9 +111,8 @@ mod tests {
     fn mainnet_and_oracle_mock_guard_is_present() {
         let source = include_str!("lib.rs");
         assert!(
-            source.contains(
-                r#"#[cfg(all(feature = "mainnet", feature = "oracle-mock"))]"#
-            ) && source.contains("compile_error!"),
+            source.contains(r#"#[cfg(all(feature = "mainnet", feature = "oracle-mock"))]"#)
+                && source.contains("compile_error!"),
             "the oracle-mock/mainnet compile_error! guard is missing from lib.rs"
         );
     }

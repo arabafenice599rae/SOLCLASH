@@ -43,7 +43,10 @@ pub fn resolve_event(ctx: Context<ResolveEvent>) -> Result<()> {
     let event = &mut ctx.accounts.event;
 
     // step 1
-    require!(event.status == EventStatus::Locked, SolclashError::EventNotLocked);
+    require!(
+        event.status == EventStatus::Locked,
+        SolclashError::EventNotLocked
+    );
     let now = Clock::get()?.unix_timestamp;
     require!(now >= event.resolution_time, SolclashError::ResolveTooEarly);
 
@@ -114,7 +117,10 @@ pub fn challenge_resolution(ctx: Context<ChallengeResolution>) -> Result<()> {
         SolclashError::EventNotResolving
     );
     let now = Clock::get()?.unix_timestamp;
-    require!(now < event.finalized_at, SolclashError::ChallengeWindowClosed);
+    require!(
+        now < event.finalized_at,
+        SolclashError::ChallengeWindowClosed
+    );
 
     // steps 2-8, identical to resolve_event
     let extracted = oracle::mock::extract(&ctx.accounts.price_update);

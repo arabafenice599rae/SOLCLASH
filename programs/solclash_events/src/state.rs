@@ -93,7 +93,8 @@ impl Event {
     ///                           ---
     ///                           197
     /// ```
-    pub const SPACE: usize = 8 + 32 + 8 + 32 + 1 + 16 + 8 + 8 + 8 + 8 + 8 + 4 + 8 + 1 + 2 + 16 + 8 + 8 + 8 + 4 + 1;
+    pub const SPACE: usize =
+        8 + 32 + 8 + 32 + 1 + 16 + 8 + 8 + 8 + 8 + 8 + 4 + 8 + 1 + 2 + 16 + 8 + 8 + 8 + 4 + 1;
 
     /// Lamports the PDA must hold on top of `rent_exempt_minimum`,
     /// depending on which phase of the state machine it is in. Before a

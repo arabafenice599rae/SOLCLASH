@@ -114,7 +114,10 @@ pub struct PlaceBet<'info> {
 pub fn place_bet(ctx: Context<PlaceBet>, outcome: u8, stake: u64) -> Result<()> {
     let event = &mut ctx.accounts.event;
 
-    require!(event.status == EventStatus::Open, SolclashError::EventNotOpen);
+    require!(
+        event.status == EventStatus::Open,
+        SolclashError::EventNotOpen
+    );
     let now = Clock::get()?.unix_timestamp;
     require!(now < event.betting_close_time, SolclashError::BettingClosed);
     require!(
@@ -124,7 +127,10 @@ pub fn place_bet(ctx: Context<PlaceBet>, outcome: u8, stake: u64) -> Result<()> 
     require!(stake >= MIN_STAKE_LAMPORTS_DEV, SolclashError::StakeTooLow);
     require!(stake <= MAX_STAKE_LAMPORTS_DEV, SolclashError::StakeTooHigh);
 
-    let new_pot = event.pot.checked_add(stake).ok_or(SolclashError::MathOverflow)?;
+    let new_pot = event
+        .pot
+        .checked_add(stake)
+        .ok_or(SolclashError::MathOverflow)?;
     require!(
         new_pot <= MAX_POT_LAMPORTS_DEV,
         SolclashError::PotWouldExceedMax
@@ -169,7 +175,11 @@ pub fn place_bet(ctx: Context<PlaceBet>, outcome: u8, stake: u64) -> Result<()> 
 
     let lamports = event.to_account_info().lamports();
     require!(
-        lamports >= event.rent_exempt_minimum.checked_add(event.outstanding_liability()).ok_or(SolclashError::MathOverflow)?,
+        lamports
+            >= event
+                .rent_exempt_minimum
+                .checked_add(event.outstanding_liability())
+                .ok_or(SolclashError::MathOverflow)?,
         SolclashError::EscrowMismatch
     );
 
@@ -199,10 +209,16 @@ pub fn cancel_bet(ctx: Context<CancelBet>) -> Result<()> {
     let event = &mut ctx.accounts.event;
     let bet_entry = &ctx.accounts.bet_entry;
 
-    require!(event.status == EventStatus::Open, SolclashError::CancelNotOpen);
+    require!(
+        event.status == EventStatus::Open,
+        SolclashError::CancelNotOpen
+    );
 
     let stake = bet_entry.stake;
-    event.pot = event.pot.checked_sub(stake).ok_or(SolclashError::MathOverflow)?;
+    event.pot = event
+        .pot
+        .checked_sub(stake)
+        .ok_or(SolclashError::MathOverflow)?;
     if bet_entry.outcome == OUTCOME_YES {
         event.yes_stake = event
             .yes_stake
@@ -219,11 +235,19 @@ pub fn cancel_bet(ctx: Context<CancelBet>) -> Result<()> {
         .checked_sub(1)
         .ok_or(SolclashError::MathOverflow)?;
 
-    transfer_from_pda(&event.to_account_info(), &ctx.accounts.bettor.to_account_info(), stake)?;
+    transfer_from_pda(
+        &event.to_account_info(),
+        &ctx.accounts.bettor.to_account_info(),
+        stake,
+    )?;
 
     let lamports = event.to_account_info().lamports();
     require!(
-        lamports >= event.rent_exempt_minimum.checked_add(event.outstanding_liability()).ok_or(SolclashError::MathOverflow)?,
+        lamports
+            >= event
+                .rent_exempt_minimum
+                .checked_add(event.outstanding_liability())
+                .ok_or(SolclashError::MathOverflow)?,
         SolclashError::EscrowMismatch
     );
 
@@ -244,7 +268,10 @@ pub struct LockEvent<'info> {
 pub fn lock_event(ctx: Context<LockEvent>) -> Result<()> {
     let event = &mut ctx.accounts.event;
 
-    require!(event.status == EventStatus::Open, SolclashError::LockNotOpen);
+    require!(
+        event.status == EventStatus::Open,
+        SolclashError::LockNotOpen
+    );
     let now = Clock::get()?.unix_timestamp;
     require!(now >= event.betting_close_time, SolclashError::LockTooEarly);
 
@@ -259,7 +286,11 @@ pub fn lock_event(ctx: Context<LockEvent>) -> Result<()> {
 
     let lamports = event.to_account_info().lamports();
     require!(
-        lamports >= event.rent_exempt_minimum.checked_add(event.outstanding_liability()).ok_or(SolclashError::MathOverflow)?,
+        lamports
+            >= event
+                .rent_exempt_minimum
+                .checked_add(event.outstanding_liability())
+                .ok_or(SolclashError::MathOverflow)?,
         SolclashError::EscrowMismatch
     );
 

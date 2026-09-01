@@ -44,7 +44,10 @@ pub fn claim(ctx: Context<Claim>) -> Result<()> {
     let event = &mut ctx.accounts.event;
     let bet_entry = &ctx.accounts.bet_entry;
 
-    require!(event.status == EventStatus::Resolved, SolclashError::EventNotResolved);
+    require!(
+        event.status == EventStatus::Resolved,
+        SolclashError::EventNotResolved
+    );
     let now = Clock::get()?.unix_timestamp;
     // I13, defense-in-depth: status == Resolved already implies
     // now >= finalized_at transitively (finalize_resolution required it,
@@ -52,7 +55,10 @@ pub fn claim(ctx: Context<Claim>) -> Result<()> {
     // backward), so this can never actually fire — kept anyway as a
     // direct, self-documenting assertion of the named invariant rather
     // than an indirect one.
-    require!(now >= event.finalized_at, SolclashError::ClaimBeforeFinalized);
+    require!(
+        now >= event.finalized_at,
+        SolclashError::ClaimBeforeFinalized
+    );
 
     // status == Resolved is only reached via finalize_resolution's `Some`
     // branch, which always leaves candidate_outcome as Some — this can
@@ -72,7 +78,11 @@ pub fn claim(ctx: Context<Claim>) -> Result<()> {
     };
     let payout = compute_claim(event.payout_pool, bet_entry.stake, winning_stake)?;
 
-    transfer_from_pda(&event.to_account_info(), &ctx.accounts.bettor.to_account_info(), payout)?;
+    transfer_from_pda(
+        &event.to_account_info(),
+        &ctx.accounts.bettor.to_account_info(),
+        payout,
+    )?;
 
     event.bets_closed = event
         .bets_closed
@@ -158,11 +168,18 @@ pub fn claim_refund(ctx: Context<ClaimRefund>) -> Result<()> {
     // one-sided book, mark_refundable's timeout), finalized_at is still
     // its create_event default of 0, so this is trivially true there —
     // harmless, but noted in DEVIATIONS.md.
-    require!(now >= event.finalized_at, SolclashError::ClaimBeforeFinalized);
+    require!(
+        now >= event.finalized_at,
+        SolclashError::ClaimBeforeFinalized
+    );
 
     let refund = compute_refund(event.payout_pool, bet_entry.stake, event.pot)?;
 
-    transfer_from_pda(&event.to_account_info(), &ctx.accounts.bettor.to_account_info(), refund)?;
+    transfer_from_pda(
+        &event.to_account_info(),
+        &ctx.accounts.bettor.to_account_info(),
+        refund,
+    )?;
 
     event.bets_closed = event
         .bets_closed

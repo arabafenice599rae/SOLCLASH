@@ -138,7 +138,11 @@ pub fn confidence_ratio_bps(price_e8: i128, conf_e8: i128) -> Result<u64, Solcla
 /// codes — `ZeroWinningStake` vs `ZeroPot` — since they mean different
 /// things operationally) before this is ever reached, so this function
 /// itself is `total_stake > 0` by contract, not by internal branching.
-fn pro_rata_share(payout_pool: u64, share_stake: u64, total_stake: u64) -> Result<u64, SolclashError> {
+fn pro_rata_share(
+    payout_pool: u64,
+    share_stake: u64,
+    total_stake: u64,
+) -> Result<u64, SolclashError> {
     let numerator = (payout_pool as u128)
         .checked_mul(share_stake as u128)
         .ok_or(SolclashError::MathOverflow)?;
@@ -149,7 +153,11 @@ fn pro_rata_share(payout_pool: u64, share_stake: u64, total_stake: u64) -> Resul
 }
 
 /// `claim_i = floor(payout_pool * stake_i / winning_stake)`.
-pub fn compute_claim(payout_pool: u64, stake: u64, winning_stake: u64) -> Result<u64, SolclashError> {
+pub fn compute_claim(
+    payout_pool: u64,
+    stake: u64,
+    winning_stake: u64,
+) -> Result<u64, SolclashError> {
     if winning_stake == 0 {
         return Err(SolclashError::ZeroWinningStake);
     }
