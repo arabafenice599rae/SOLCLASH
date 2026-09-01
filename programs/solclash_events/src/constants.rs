@@ -42,13 +42,13 @@ pub const MAX_STAKE_LAMPORTS_DEV: u64 = 1_000_000_000_000; // 1,000 SOL
 pub const MAX_POT_LAMPORTS_DEV: u64 = 10_000_000_000_000_000; // 10,000,000 SOL
 
 /// Destination of the protocol fee. Placeholder: the System Program's own
-/// address (`11111111111111111111111111111111111111111`), chosen only
+/// address (`11111111111111111111111111111111`), chosen only
 /// because it is a syntactically valid, publicly known, unowned-by-us
 /// Pubkey — it is NOT a real fee wallet and must never receive real funds.
 /// The spec says to ask for the real value "only when it's actually
 /// needed"; per explicit instruction for this draft pass, it was not asked.
 /// TBD, covered by `mainnet_constants_are_frozen`.
-pub const FEE_WALLET_DEV: Pubkey = pubkey!("11111111111111111111111111111111111111111");
+pub const FEE_WALLET_DEV: Pubkey = pubkey!("11111111111111111111111111111111");
 
 /// Reward paid to the caller who successfully calls `resolve_event`.
 /// Spec hint: "rent 0.00182 SOL + fee of 2+ tx". Dev value: 0.00182 SOL
@@ -100,10 +100,12 @@ mod tests {
 
     /// Sanity check on the dev seed data itself, runnable with plain
     /// `cargo test` and no Solana toolchain since it touches only `Pubkey`
-    /// parsing and integer comparisons.
+    /// parsing and integer comparisons. Both operands are `const`, so this
+    /// is written as a `const` block: the relation is enforced at compile
+    /// time and the test merely reports that it held.
     #[test]
     fn dev_min_stake_dominates_resolver_reward() {
-        assert!(MIN_STAKE_LAMPORTS_DEV > RESOLVER_REWARD_DEV * 5);
+        const { assert!(MIN_STAKE_LAMPORTS_DEV > RESOLVER_REWARD_DEV * 5) };
     }
 
     /// This is the test named in the spec. It must fail the build the
@@ -111,15 +113,18 @@ mod tests {
     /// still holds its development value — i.e. nobody forgot to replace a
     /// placeholder before a mainnet build.
     ///
-    /// NOTE: this can only run once the crate actually exists and Fase 0
-    /// has produced a working `Cargo.toml` with a `mainnet` feature flag —
-    /// it is written here as source, never executed.
+    /// NOTE: it still cannot run today. `mainnet` collides with the
+    /// default `oracle-mock` feature through the `compile_error!` guard in
+    /// lib.rs, and `--no-default-features --features mainnet` leaves
+    /// `instructions/resolution.rs` with no price-update account type at
+    /// all. Fase 3 (the real `PriceUpdateV2` path) is what makes a
+    /// `mainnet` build possible, and this test executable.
     #[cfg(feature = "mainnet")]
     #[test]
     fn mainnet_constants_are_frozen() {
         assert_ne!(
             FEE_WALLET_DEV,
-            pubkey!("11111111111111111111111111111111111111111"),
+            pubkey!("11111111111111111111111111111111"),
             "FEE_WALLET_DEV placeholder still in place for a mainnet build"
         );
         assert_ne!(

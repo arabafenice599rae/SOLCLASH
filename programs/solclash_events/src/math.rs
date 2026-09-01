@@ -179,7 +179,7 @@ mod tests {
     #[test]
     fn normalize_exponent_minus_6_scales_up() {
         // shift = -6 + 8 = 2 -> multiply by 100
-        assert_eq!(normalize_to_e8(150_00, -6).unwrap(), 150_00_00);
+        assert_eq!(normalize_to_e8(15_000, -6).unwrap(), 1_500_000);
     }
 
     #[test]

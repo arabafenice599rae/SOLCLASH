@@ -130,9 +130,11 @@ pub fn place_bet(ctx: Context<PlaceBet>, outcome: u8, stake: u64) -> Result<()> 
         SolclashError::PotWouldExceedMax
     );
 
+    // anchor-lang 1.x takes the program *id* here, not its AccountInfo
+    // (`CpiContext::new(program_id: Pubkey, accounts: T)`), unlike 0.x.
     transfer(
         CpiContext::new(
-            ctx.accounts.system_program.to_account_info(),
+            ctx.accounts.system_program.key(),
             Transfer {
                 from: ctx.accounts.bettor.to_account_info(),
                 to: event.to_account_info(),

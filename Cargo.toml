@@ -1,0 +1,23 @@
+[workspace]
+members = ["programs/*"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/arabafenice599rae/SOLCLASH"
+
+# Anchor's stock release profile. `overflow-checks = true` is not optional
+# here: every `checked_*` call in this program is a deliberate, tested
+# error path, and a release build that silently wrapped instead would turn
+# those into silent fund-accounting bugs.
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
+
+[profile.release.build-override]
+opt-level = 3
+incremental = false
+codegen-units = 1
