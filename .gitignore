@@ -17,6 +17,9 @@ target
 .anchor/
 test-ledger/
 
+# Surfpool local state
+.surfpool/
+
 # Node (Anchor TS tests)
 node_modules/
 
